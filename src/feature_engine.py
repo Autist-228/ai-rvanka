@@ -2,155 +2,273 @@ import os
 import numpy as np
 import pandas as pd
 import ta
+import warnings
+
+warnings.filterwarnings("ignore")
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from configs.settings import DATA_DIR, SYMBOLS, INTERVAL_NAMES, PRIMARY_INTERVAL
+from configs.settings import (
+    DATA_DIR, SYMBOLS, PRIMARY_TF, ALL_TIMEFRAMES,
+    HIGHER_TF_FEATURES, LOWER_TF_FEATURES, LABEL_HORIZON,
+    TIME_WEIGHT_DECAY,
+)
 
 
 def load_symbol_data(symbol: str) -> dict:
     symbol_dir = os.path.join(DATA_DIR, symbol)
     data = {}
-
-    for interval_key, interval_name in INTERVAL_NAMES.items():
-        fpath = os.path.join(symbol_dir, f"klines_{interval_name}.parquet")
+    for tf in ALL_TIMEFRAMES:
+        fpath = os.path.join(symbol_dir, f"klines_{tf}.parquet")
         if os.path.exists(fpath):
-            data[interval_name] = pd.read_parquet(fpath)
-
+            data[tf] = pd.read_parquet(fpath)
     fr_path = os.path.join(symbol_dir, "funding_rate.parquet")
     if os.path.exists(fr_path):
         data["funding_rate"] = pd.read_parquet(fr_path)
-
-    oi_path = os.path.join(symbol_dir, "open_interest.parquet")
-    if os.path.exists(oi_path):
-        data["open_interest"] = pd.read_parquet(oi_path)
-
     return data
 
 
-def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    h = df["high"]
-    l = df["low"]
-    c = df["close"]
-    v = df["volume"]
-    o = df["open"]
+def add_ta_indicators(df: pd.DataFrame, prefix: str = "") -> pd.DataFrame:
+    h, l, c, v, o = df["high"], df["low"], df["close"], df["volume"], df["open"]
+    p = prefix
 
-    for p in [7, 14, 21, 50]:
-        df[f"sma_{p}"] = ta.trend.sma_indicator(c, window=p)
-        df[f"ema_{p}"] = ta.trend.ema_indicator(c, window=p)
+    for w in [7, 14, 21, 50]:
+        df[f"{p}sma_{w}"] = ta.trend.sma_indicator(c, window=w)
+        df[f"{p}ema_{w}"] = ta.trend.ema_indicator(c, window=w)
 
-    df["rsi_7"] = ta.momentum.rsi(c, window=7)
-    df["rsi_14"] = ta.momentum.rsi(c, window=14)
-    df["rsi_21"] = ta.momentum.rsi(c, window=21)
+    df[f"{p}sma_100"] = ta.trend.sma_indicator(c, window=100)
+    df[f"{p}sma_200"] = ta.trend.sma_indicator(c, window=200)
+    df[f"{p}ema_100"] = ta.trend.ema_indicator(c, window=100)
+    df[f"{p}ema_200"] = ta.trend.ema_indicator(c, window=200)
+
+    for w in [7, 14, 21]:
+        df[f"{p}rsi_{w}"] = ta.momentum.rsi(c, window=w)
 
     macd = ta.trend.MACD(c, window_slow=26, window_fast=12, window_sign=9)
-    df["macd"] = macd.macd()
-    df["macd_signal"] = macd.macd_signal()
-    df["macd_diff"] = macd.macd_diff()
+    df[f"{p}macd"] = macd.macd()
+    df[f"{p}macd_signal"] = macd.macd_signal()
+    df[f"{p}macd_diff"] = macd.macd_diff()
 
-    bb_20 = ta.volatility.BollingerBands(c, window=20, window_dev=2)
-    df["bb_upper"] = bb_20.bollinger_hband()
-    df["bb_lower"] = bb_20.bollinger_lband()
-    df["bb_mid"] = bb_20.bollinger_mavg()
-    df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_mid"]
-    df["bb_pct"] = bb_20.bollinger_pband()
+    bb = ta.volatility.BollingerBands(c, window=20, window_dev=2)
+    df[f"{p}bb_upper"] = bb.bollinger_hband()
+    df[f"{p}bb_lower"] = bb.bollinger_lband()
+    df[f"{p}bb_mid"] = bb.bollinger_mavg()
+    df[f"{p}bb_width"] = (df[f"{p}bb_upper"] - df[f"{p}bb_lower"]) / (df[f"{p}bb_mid"] + 1e-10)
+    df[f"{p}bb_pct"] = bb.bollinger_pband()
 
-    for p in [7, 14, 21]:
-        df[f"atr_{p}"] = ta.volatility.average_true_range(h, l, c, window=p)
+    for w in [7, 14, 21]:
+        df[f"{p}atr_{w}"] = ta.volatility.average_true_range(h, l, c, window=w)
 
     stoch = ta.momentum.StochasticOscillator(h, l, c, window=14, smooth_window=3)
-    df["stoch_k"] = stoch.stoch()
-    df["stoch_d"] = stoch.stoch_signal()
+    df[f"{p}stoch_k"] = stoch.stoch()
+    df[f"{p}stoch_d"] = stoch.stoch_signal()
 
-    df["adx"] = ta.trend.adx(h, l, c, window=14)
-    df["adx_pos"] = ta.trend.adx_pos(h, l, c, window=14)
-    df["adx_neg"] = ta.trend.adx_neg(h, l, c, window=14)
+    df[f"{p}adx"] = ta.trend.adx(h, l, c, window=14)
+    df[f"{p}adx_pos"] = ta.trend.adx_pos(h, l, c, window=14)
+    df[f"{p}adx_neg"] = ta.trend.adx_neg(h, l, c, window=14)
 
-    df["cci_14"] = ta.trend.cci(h, l, c, window=14)
-    df["cci_20"] = ta.trend.cci(h, l, c, window=20)
+    df[f"{p}cci_14"] = ta.trend.cci(h, l, c, window=14)
+    df[f"{p}cci_20"] = ta.trend.cci(h, l, c, window=20)
 
-    df["williams_r"] = ta.momentum.williams_r(h, l, c, window=14)
+    df[f"{p}williams_r"] = ta.momentum.williams_r(h, l, c, lbp=14)
+    df[f"{p}mfi_14"] = ta.volume.money_flow_index(h, l, c, v, window=14)
+    df[f"{p}obv"] = ta.volume.on_balance_volume(c, v)
+    df[f"{p}cmf"] = ta.volume.chaikin_money_flow(h, l, c, v, window=20)
 
-    df["mfi_14"] = ta.volume.money_flow_index(h, l, c, v, window=14)
-
-    df["obv"] = ta.volume.on_balance_volume(c, v)
-    df["vwap_ratio"] = (v * (h + l + c) / 3).cumsum() / v.cumsum()
-
-    df["cmf"] = ta.volume.chaikin_money_flow(h, l, c, v, window=20)
+    vwap_cum = (v * (h + l + c) / 3).cumsum()
+    v_cum = v.cumsum()
+    df[f"{p}vwap_ratio"] = vwap_cum / (v_cum + 1e-10)
 
     ic = ta.trend.IchimokuIndicator(h, l, window1=9, window2=26, window3=52)
-    df["ichimoku_a"] = ic.ichimoku_a()
-    df["ichimoku_b"] = ic.ichimoku_b()
-    df["ichimoku_base"] = ic.ichimoku_base_line()
-    df["ichimoku_conv"] = ic.ichimoku_conversion_line()
+    df[f"{p}ichimoku_a"] = ic.ichimoku_a()
+    df[f"{p}ichimoku_b"] = ic.ichimoku_b()
+    df[f"{p}ichimoku_base"] = ic.ichimoku_base_line()
+    df[f"{p}ichimoku_conv"] = ic.ichimoku_conversion_line()
 
-    df["psar"] = ta.trend.PSARIndicator(h, l, c).psar()
+    df[f"{p}psar"] = ta.trend.PSARIndicator(h, l, c).psar()
 
-    for p in [1, 2, 3, 5, 10, 20]:
-        df[f"return_{p}"] = c.pct_change(p)
+    for w in [1, 2, 3, 5, 10, 20]:
+        df[f"{p}return_{w}"] = c.pct_change(w)
 
-    for p in [5, 10, 20, 50]:
-        df[f"volatility_{p}"] = c.pct_change().rolling(p).std()
+    for w in [5, 10, 20, 50]:
+        df[f"{p}volatility_{w}"] = c.pct_change().rolling(w).std()
 
-    for p in [5, 10, 20]:
-        df[f"volume_sma_{p}"] = v.rolling(p).mean()
-        df[f"volume_ratio_{p}"] = v / v.rolling(p).mean()
+    for w in [5, 10, 20]:
+        df[f"{p}volume_sma_{w}"] = v.rolling(w).mean()
+        df[f"{p}volume_ratio_{w}"] = v / (v.rolling(w).mean() + 1e-10)
 
-    df["body_size"] = abs(c - o) / (h - l + 1e-10)
-    df["upper_shadow"] = (h - pd.concat([o, c], axis=1).max(axis=1)) / (h - l + 1e-10)
-    df["lower_shadow"] = (pd.concat([o, c], axis=1).min(axis=1) - l) / (h - l + 1e-10)
-    df["is_green"] = (c > o).astype(int)
+    df[f"{p}body_size"] = abs(c - o) / (h - l + 1e-10)
+    df[f"{p}upper_shadow"] = (h - pd.concat([o, c], axis=1).max(axis=1)) / (h - l + 1e-10)
+    df[f"{p}lower_shadow"] = (pd.concat([o, c], axis=1).min(axis=1) - l) / (h - l + 1e-10)
+    df[f"{p}is_green"] = (c > o).astype(int)
 
-    for p in [3, 5, 10]:
-        df[f"green_ratio_{p}"] = df["is_green"].rolling(p).mean()
+    for w in [3, 5, 10]:
+        df[f"{p}green_ratio_{w}"] = df[f"{p}is_green"].rolling(w).mean()
 
-    for p in [5, 10, 20]:
-        df[f"high_max_{p}"] = h.rolling(p).max()
-        df[f"low_min_{p}"] = l.rolling(p).min()
-        df[f"range_pct_{p}"] = (df[f"high_max_{p}"] - df[f"low_min_{p}"]) / c
+    for w in [5, 10, 20]:
+        df[f"{p}high_max_{w}"] = h.rolling(w).max()
+        df[f"{p}low_min_{w}"] = l.rolling(w).min()
+        df[f"{p}range_pct_{w}"] = (df[f"{p}high_max_{w}"] - df[f"{p}low_min_{w}"]) / (c + 1e-10)
 
-    df["dist_from_high_20"] = (c - h.rolling(20).max()) / c
-    df["dist_from_low_20"] = (c - l.rolling(20).min()) / c
-
-    df["hour"] = df["datetime"].dt.hour
-    df["day_of_week"] = df["datetime"].dt.dayofweek
-    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-    df["dow_sin"] = np.sin(2 * np.pi * df["day_of_week"] / 7)
-    df["dow_cos"] = np.cos(2 * np.pi * df["day_of_week"] / 7)
+    df[f"{p}dist_from_high_20"] = (c - h.rolling(20).max()) / (c + 1e-10)
+    df[f"{p}dist_from_low_20"] = (c - l.rolling(20).min()) / (c + 1e-10)
 
     return df
 
 
-def merge_multi_timeframe(data: dict, primary_tf: str = "1h") -> pd.DataFrame:
-    df = data.get(primary_tf)
-    if df is None:
-        raise ValueError(f"Primary timeframe {primary_tf} not found")
+def add_extended_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    h, l, c, v = df["high"], df["low"], df["close"], df["volume"]
 
+    kc = ta.volatility.KeltnerChannel(h, l, c, window=20, window_atr=10)
+    df["kc_upper"] = kc.keltner_channel_hband()
+    df["kc_lower"] = kc.keltner_channel_lband()
+    df["kc_width"] = (df["kc_upper"] - df["kc_lower"]) / (c + 1e-10)
+
+    dc = ta.volatility.DonchianChannel(h, l, c, window=20)
+    df["dc_upper"] = dc.donchian_channel_hband()
+    df["dc_lower"] = dc.donchian_channel_lband()
+    df["dc_width"] = (df["dc_upper"] - df["dc_lower"]) / (c + 1e-10)
+    df["dc_pct"] = (c - df["dc_lower"]) / (df["dc_upper"] - df["dc_lower"] + 1e-10)
+
+    for w in [5, 10, 20]:
+        df[f"roc_{w}"] = ta.momentum.roc(c, window=w)
+
+    df["trix"] = ta.trend.trix(c, window=15)
+    df["mass_index"] = ta.trend.mass_index(h, l, window_fast=9, window_slow=25)
+
+    aroon = ta.trend.AroonIndicator(h, l, window=25)
+    df["aroon_up"] = aroon.aroon_up()
+    df["aroon_down"] = aroon.aroon_down()
+    df["aroon_diff"] = df["aroon_up"] - df["aroon_down"]
+
+    df["dpo"] = ta.trend.dpo(c, window=20)
+    df["ulcer_index"] = ta.volatility.ulcer_index(c, window=14)
+
+    for w in [5, 10, 20]:
+        log_ret = np.log(c / c.shift(1))
+        df[f"realized_vol_{w}"] = log_ret.rolling(w).std() * np.sqrt(w)
+
+    for w in [10, 20]:
+        hl_ratio = np.log(h / l)
+        df[f"parkinson_vol_{w}"] = hl_ratio.rolling(w).apply(
+            lambda x: np.sqrt(np.sum(x**2) / (4 * len(x) * np.log(2))), raw=True
+        )
+
+    for w in [7, 14, 21]:
+        df[f"price_position_{w}"] = (c - l.rolling(w).min()) / (h.rolling(w).max() - l.rolling(w).min() + 1e-10)
+
+    df["volume_trend"] = v.rolling(10).mean() / (v.rolling(50).mean() + 1e-10)
+    df["volume_spike"] = v / (v.rolling(20).mean() + 1e-10)
+
+    for w in [5, 10]:
+        df[f"close_std_{w}"] = c.rolling(w).std() / (c.rolling(w).mean() + 1e-10)
+
+    df["gap"] = (df["open"] - c.shift(1)) / (c.shift(1) + 1e-10)
+
+    return df
+
+
+def add_regime_features(df: pd.DataFrame) -> pd.DataFrame:
+    c = df["close"]
+    adx = df.get("adx")
+    if adx is None:
+        return df
+
+    df["regime_trend"] = (adx > 25).astype(int)
+    df["regime_strong_trend"] = (adx > 40).astype(int)
+
+    vol_20 = df.get("volatility_20")
+    if vol_20 is not None:
+        vol_median = vol_20.rolling(100).median()
+        df["regime_high_vol"] = (vol_20 > vol_median).astype(int)
+        df["vol_regime_ratio"] = vol_20 / (vol_median + 1e-10)
+
+    bb_width = df.get("bb_width")
+    if bb_width is not None:
+        bw_median = bb_width.rolling(100).median()
+        df["regime_squeeze"] = (bb_width < bw_median * 0.7).astype(int)
+        df["regime_expansion"] = (bb_width > bw_median * 1.5).astype(int)
+
+    ret_20 = c.pct_change(20)
+    df["regime_bullish"] = (ret_20 > 0.02).astype(int)
+    df["regime_bearish"] = (ret_20 < -0.02).astype(int)
+
+    sma_50 = df.get("sma_50")
+    sma_200 = df.get("sma_200")
+    if sma_50 is not None and sma_200 is not None:
+        df["regime_golden_cross"] = (sma_50 > sma_200).astype(int)
+
+    return df
+
+
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    dt = df["datetime"]
+    hour = dt.dt.hour
+    dow = dt.dt.dayofweek
+
+    df["hour_sin"] = np.sin(2 * np.pi * hour / 24)
+    df["hour_cos"] = np.cos(2 * np.pi * hour / 24)
+    df["dow_sin"] = np.sin(2 * np.pi * dow / 7)
+    df["dow_cos"] = np.cos(2 * np.pi * dow / 7)
+
+    return df
+
+
+def compute_indicators_for_tf(df: pd.DataFrame, tf_name: str, is_primary: bool) -> pd.DataFrame:
     df = df.copy()
-    df = add_ta_indicators(df)
+    if is_primary:
+        df = add_ta_indicators(df, prefix="")
+        df = add_extended_indicators(df)
+        df = add_regime_features(df)
+        df = add_time_features(df)
+    else:
+        df = add_ta_indicators(df, prefix=f"{tf_name}_")
+    return df
 
-    higher_tfs = {"4h": "4h"}
-    for tf_name, tf_key in higher_tfs.items():
-        if tf_key in data:
-            htf = data[tf_key].copy()
-            htf = add_ta_indicators(htf)
 
-            htf_cols = ["timestamp"]
-            for col in ["rsi_14", "macd", "macd_diff", "bb_pct", "bb_width",
-                         "adx", "atr_14", "volume_ratio_10", "return_1", "return_5"]:
-                if col in htf.columns:
-                    new_name = f"{tf_name}_{col}"
-                    htf[new_name] = htf[col]
-                    htf_cols.append(new_name)
+def merge_timeframes(data: dict) -> pd.DataFrame:
+    primary = data.get(PRIMARY_TF)
+    if primary is None:
+        raise ValueError(f"Primary timeframe {PRIMARY_TF} not found")
 
-            htf_merge = htf[htf_cols].copy()
-            df = pd.merge_asof(
-                df.sort_values("timestamp"),
-                htf_merge.sort_values("timestamp"),
-                on="timestamp",
-                direction="backward"
-            )
+    print(f"  Computing indicators on {PRIMARY_TF} ({len(primary)} rows)...")
+    df = compute_indicators_for_tf(primary, PRIMARY_TF, is_primary=True)
+
+    higher_tfs = [tf for tf in ["1h", "4h"] if tf in data and tf != PRIMARY_TF]
+    for tf in higher_tfs:
+        print(f"  Merging {tf} features...")
+        htf = compute_indicators_for_tf(data[tf], tf, is_primary=False)
+        htf_cols = ["timestamp"]
+        prefix = f"{tf}_"
+        for col in HIGHER_TF_FEATURES:
+            full_col = f"{prefix}{col}"
+            if full_col in htf.columns:
+                htf_cols.append(full_col)
+        htf_merge = htf[htf_cols].copy()
+        df = pd.merge_asof(
+            df.sort_values("timestamp"),
+            htf_merge.sort_values("timestamp"),
+            on="timestamp",
+            direction="backward",
+        )
+
+    lower_tfs = [tf for tf in ["1m", "5m"] if tf in data and tf != PRIMARY_TF]
+    for tf in lower_tfs:
+        print(f"  Merging {tf} features...")
+        ltf = compute_indicators_for_tf(data[tf], tf, is_primary=False)
+        ltf_cols = ["timestamp"]
+        prefix = f"{tf}_"
+        for col in LOWER_TF_FEATURES:
+            full_col = f"{prefix}{col}"
+            if full_col in ltf.columns:
+                ltf_cols.append(full_col)
+        ltf_merge = ltf[ltf_cols].copy()
+        df = pd.merge_asof(
+            df.sort_values("timestamp"),
+            ltf_merge.sort_values("timestamp"),
+            on="timestamp",
+            direction="backward",
+        )
 
     if "funding_rate" in data and not data["funding_rate"].empty:
         fr = data["funding_rate"][["timestamp", "funding_rate"]].copy()
@@ -158,28 +276,68 @@ def merge_multi_timeframe(data: dict, primary_tf: str = "1h") -> pd.DataFrame:
             df.sort_values("timestamp"),
             fr.sort_values("timestamp"),
             on="timestamp",
-            direction="backward"
+            direction="backward",
         )
         df["funding_rate"] = df["funding_rate"].ffill()
-
-    if "open_interest" in data and not data["open_interest"].empty:
-        oi = data["open_interest"][["timestamp", "open_interest"]].copy()
-        df = pd.merge_asof(
-            df.sort_values("timestamp"),
-            oi.sort_values("timestamp"),
-            on="timestamp",
-            direction="backward"
-        )
-        df["open_interest"] = df["open_interest"].ffill()
-        df["oi_change"] = df["open_interest"].pct_change()
-        for p in [5, 10, 20]:
-            df[f"oi_sma_{p}"] = df["open_interest"].rolling(p).mean()
-            df[f"oi_ratio_{p}"] = df["open_interest"] / df[f"oi_sma_{p}"]
+        df["funding_rate_abs"] = df["funding_rate"].abs()
+        df["funding_rate_ma"] = df["funding_rate"].rolling(8, min_periods=1).mean()
 
     return df
 
 
-def create_labels(df: pd.DataFrame, horizon: int = 4) -> pd.DataFrame:
+def add_cross_tf_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    if "rsi_14" in df.columns and "1h_rsi_14" in df.columns:
+        df["rsi_15m_vs_1h"] = df["rsi_14"] - df["1h_rsi_14"]
+    if "rsi_14" in df.columns and "4h_rsi_14" in df.columns:
+        df["rsi_15m_vs_4h"] = df["rsi_14"] - df["4h_rsi_14"]
+    if "macd_diff" in df.columns and "1h_macd_diff" in df.columns:
+        df["macd_15m_vs_1h"] = np.sign(df["macd_diff"]) - np.sign(df["1h_macd_diff"])
+    if "atr_14" in df.columns and "1h_atr_14" in df.columns:
+        df["atr_ratio_15m_1h"] = df["atr_14"] / (df["1h_atr_14"] + 1e-10)
+    if "volume_ratio_10" in df.columns and "1h_volume_ratio_10" in df.columns:
+        df["vol_ratio_15m_vs_1h"] = df["volume_ratio_10"] / (df["1h_volume_ratio_10"] + 1e-10)
+    if "adx" in df.columns and "1h_adx" in df.columns:
+        df["adx_15m_vs_1h"] = df["adx"] - df["1h_adx"]
+    if "bb_width" in df.columns and "1h_bb_width" in df.columns:
+        df["bbw_ratio_15m_1h"] = df["bb_width"] / (df["1h_bb_width"] + 1e-10)
+    if "stoch_k" in df.columns and "1h_stoch_k" in df.columns:
+        df["stoch_15m_vs_1h"] = df["stoch_k"] - df["1h_stoch_k"]
+
+    return df
+
+
+def add_cross_coin_features(df: pd.DataFrame, btc_df: pd.DataFrame) -> pd.DataFrame:
+    btc_close = btc_df[["timestamp", "close"]].copy()
+    btc_close.rename(columns={"close": "btc_close"}, inplace=True)
+
+    df = pd.merge_asof(
+        df.sort_values("timestamp"),
+        btc_close.sort_values("timestamp"),
+        on="timestamp",
+        direction="backward",
+    )
+
+    df["btc_return_1"] = df["btc_close"].pct_change(1)
+    df["btc_return_5"] = df["btc_close"].pct_change(5)
+    df["btc_return_20"] = df["btc_close"].pct_change(20)
+
+    coin_ret = df["close"].pct_change(1)
+    btc_ret = df["btc_return_1"]
+    df["coin_btc_spread"] = coin_ret - btc_ret
+    df["coin_btc_spread_ma"] = df["coin_btc_spread"].rolling(20, min_periods=1).mean()
+
+    df["coin_btc_corr_20"] = coin_ret.rolling(20, min_periods=10).corr(btc_ret)
+    df["coin_btc_corr_50"] = coin_ret.rolling(50, min_periods=20).corr(btc_ret)
+
+    df["coin_btc_beta"] = coin_ret.rolling(50, min_periods=20).cov(btc_ret) / (btc_ret.rolling(50, min_periods=20).var() + 1e-10)
+
+    df.drop(columns=["btc_close"], inplace=True)
+
+    return df
+
+
+def create_labels(df: pd.DataFrame) -> pd.DataFrame:
+    horizon = LABEL_HORIZON
     df["future_return"] = df["close"].shift(-horizon) / df["close"] - 1
 
     df["label"] = 0
@@ -195,7 +353,7 @@ def create_labels(df: pd.DataFrame, horizon: int = 4) -> pd.DataFrame:
     return df
 
 
-def compute_time_weights(df: pd.DataFrame, decay_factor: float = 0.0005) -> np.ndarray:
+def compute_time_weights(df: pd.DataFrame, decay_factor: float = TIME_WEIGHT_DECAY) -> np.ndarray:
     n = len(df)
     indices = np.arange(n)
     weights = np.exp(decay_factor * (indices - n + 1))
@@ -203,35 +361,48 @@ def compute_time_weights(df: pd.DataFrame, decay_factor: float = 0.0005) -> np.n
     return weights
 
 
-def build_features_for_symbol(symbol: str) -> pd.DataFrame:
-    print(f"Building features for {symbol}...")
+EXCLUDE_COLS = {
+    "timestamp", "datetime", "open", "high", "low", "close", "volume", "turnover",
+    "future_return", "future_high", "future_low", "future_max_up", "future_max_down",
+    "label", "hour", "day_of_week", "symbol",
+}
+
+
+def get_feature_cols(df: pd.DataFrame) -> list:
+    return [c for c in df.columns if c not in EXCLUDE_COLS]
+
+
+def build_features_for_symbol(symbol: str, btc_primary: pd.DataFrame = None) -> pd.DataFrame:
+    print(f"\nBuilding features for {symbol}...")
     data = load_symbol_data(symbol)
 
-    primary_tf = INTERVAL_NAMES[PRIMARY_INTERVAL]
-    df = merge_multi_timeframe(data, primary_tf=primary_tf)
+    df = merge_timeframes(data)
+    df = add_cross_tf_ratios(df)
+
+    if btc_primary is not None and symbol != "BTCUSDT":
+        df = add_cross_coin_features(df, btc_primary)
 
     df = create_labels(df)
-
-    exclude_cols = {
-        "timestamp", "datetime", "open", "high", "low", "close", "volume", "turnover",
-        "future_return", "future_high", "future_low", "future_max_up", "future_max_down",
-        "label", "hour", "day_of_week"
-    }
-    feature_cols = [c for c in df.columns if c not in exclude_cols]
     df["symbol"] = symbol
 
+    feature_cols = get_feature_cols(df)
     print(f"  {symbol}: {len(df)} rows, {len(feature_cols)} features")
     return df
 
 
 def build_all_features() -> dict:
     all_data = {}
+
+    btc_data = load_symbol_data("BTCUSDT")
+    btc_primary = btc_data.get(PRIMARY_TF)
+
     for symbol in SYMBOLS:
-        df = build_features_for_symbol(symbol)
-        out_path = os.path.join(DATA_DIR, symbol, "features.parquet")
+        df = build_features_for_symbol(symbol, btc_primary=btc_primary)
+        out_path = os.path.join(DATA_DIR, symbol, "features_v2.parquet")
         df.to_parquet(out_path, index=False)
         all_data[symbol] = df
         print(f"  Saved features to {out_path}")
+
     return all_data
 
 

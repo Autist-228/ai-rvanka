@@ -4,7 +4,6 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.data_loader import download_all_data
 from src.feature_engine import build_all_features
 from src.trainer import train_all_models
 from src.backtester import run_all_backtests
@@ -15,33 +14,37 @@ def main():
     start = time.time()
 
     print("\n" + "=" * 60)
-    print("STEP 1/5: DOWNLOADING DATA FROM BYBIT")
+    print("STEP 1/4: BUILDING FEATURES v2 (200+ features, all TFs)")
     print("=" * 60)
-    download_all_data()
+
+    from configs.settings import DATA_DIR, SYMBOLS
+    all_exist = all(
+        os.path.exists(os.path.join(DATA_DIR, s, "features_v2.parquet"))
+        for s in SYMBOLS
+    )
+    if all_exist:
+        print("Features already computed, skipping...")
+    else:
+        build_all_features()
 
     print("\n" + "=" * 60)
-    print("STEP 2/5: BUILDING FEATURES")
-    print("=" * 60)
-    build_all_features()
-
-    print("\n" + "=" * 60)
-    print("STEP 3/5: TRAINING 12 MODELS")
+    print("STEP 2/4: TRAINING 12 MODELS (Optuna + Walk-Forward CV)")
     print("=" * 60)
     train_all_models()
 
     print("\n" + "=" * 60)
-    print("STEP 4/5: RUNNING 36 BACKTESTS")
+    print("STEP 3/4: RUNNING ENSEMBLE BACKTESTS (6 coins)")
     print("=" * 60)
     results_df = run_all_backtests()
 
     print("\n" + "=" * 60)
-    print("STEP 5/5: GENERATING REPORT")
+    print("STEP 4/4: GENERATING REPORT")
     print("=" * 60)
     report = generate_report(results_df)
     print(report)
 
     from configs.settings import RESULTS_DIR
-    report_path = os.path.join(RESULTS_DIR, "report.txt")
+    report_path = os.path.join(RESULTS_DIR, "report_v2.txt")
     os.makedirs(RESULTS_DIR, exist_ok=True)
     with open(report_path, "w") as f:
         f.write(report)

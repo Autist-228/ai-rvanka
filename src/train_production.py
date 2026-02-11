@@ -1,4 +1,6 @@
 import os
+import sys
+import time
 import numpy as np
 import pandas as pd
 import joblib
@@ -11,34 +13,21 @@ import warnings
 warnings.filterwarnings("ignore")
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from configs.settings import (
-    DATA_DIR, MODELS_DIR, SYMBOLS, BACKTEST_MONTHS,
+    DATA_DIR, MODELS_DIR, SYMBOLS,
     OPTUNA_TRIALS, WALKFORWARD_FOLDS,
 )
 from src.feature_engine import compute_time_weights, get_feature_cols
 
-
-def split_train_test(df: pd.DataFrame, backtest_months: int = BACKTEST_MONTHS):
-    df = df.sort_values("timestamp").reset_index(drop=True)
-    df = df.dropna(subset=["label"])
-
-    max_ts = df["datetime"].max()
-    cutoff = max_ts - pd.DateOffset(months=backtest_months)
-
-    train = df[df["datetime"] < cutoff].copy()
-    test = df[df["datetime"] >= cutoff].copy()
-
-    return train, test
+PROD_SUFFIX = "_prod"
 
 
-def walkforward_split(df: pd.DataFrame, n_folds: int = WALKFORWARD_FOLDS):
+def walkforward_split(df, n_folds=WALKFORWARD_FOLDS):
     df = df.sort_values("timestamp").reset_index(drop=True)
     n = len(df)
     min_train = int(n * 0.4)
     fold_size = (n - min_train) // n_folds
-
     splits = []
     for i in range(n_folds):
         train_end = min_train + i * fold_size
@@ -54,7 +43,6 @@ def walkforward_split(df: pd.DataFrame, n_folds: int = WALKFORWARD_FOLDS):
 
 def optuna_lgb_objective(trial, X_train, y_train, w_train, X_val, y_val):
     from sklearn.metrics import accuracy_score
-
     params = {
         "n_estimators": trial.suggest_int("n_estimators", 200, 1000),
         "max_depth": trial.suggest_int("max_depth", 4, 10),
@@ -70,7 +58,6 @@ def optuna_lgb_objective(trial, X_train, y_train, w_train, X_val, y_val):
         "verbose": -1,
         "class_weight": "balanced",
     }
-
     model = lgb.LGBMClassifier(**params)
     eval_set = [(X_val, y_val)]
     model.fit(
@@ -85,7 +72,6 @@ def optuna_lgb_objective(trial, X_train, y_train, w_train, X_val, y_val):
 
 def optuna_xgb_objective(trial, X_train, y_train, w_train, X_val, y_val):
     from sklearn.metrics import accuracy_score
-
     params = {
         "n_estimators": trial.suggest_int("n_estimators", 100, 500),
         "max_depth": trial.suggest_int("max_depth", 3, 7),
@@ -102,7 +88,6 @@ def optuna_xgb_objective(trial, X_train, y_train, w_train, X_val, y_val):
         "tree_method": "hist",
         "early_stopping_rounds": 20,
     }
-
     model = xgb.XGBClassifier(**params)
     eval_set = [(X_val, y_val)]
     model.fit(
@@ -115,11 +100,9 @@ def optuna_xgb_objective(trial, X_train, y_train, w_train, X_val, y_val):
     return accuracy_score(y_val, y_pred)
 
 
-def tune_and_train_lgb(train_df: pd.DataFrame, feature_cols: list, symbol: str):
+def tune_lgb(all_df, feature_cols, symbol):
     print(f"    Optuna LightGBM tuning ({OPTUNA_TRIALS} trials, {WALKFORWARD_FOLDS} folds)...")
-
-    splits = walkforward_split(train_df, WALKFORWARD_FOLDS)
-
+    splits = walkforward_split(all_df, WALKFORWARD_FOLDS)
     split_data = []
     for train_fold, val_fold in splits:
         X_tr = train_fold[feature_cols].values
@@ -151,25 +134,13 @@ def tune_and_train_lgb(train_df: pd.DataFrame, feature_cols: list, symbol: str):
     best_params["n_jobs"] = -1
     best_params["verbose"] = -1
     best_params["class_weight"] = "balanced"
-
     print(f"    Best LGB accuracy (CV): {study.best_value:.4f}")
-
-    X_all = train_df[feature_cols].values
-    y_all = train_df["label"].values.copy()
-    y_all[y_all == -1] = 2
-    w_all = compute_time_weights(train_df)
-
-    model = lgb.LGBMClassifier(**best_params)
-    model.fit(X_all, y_all, sample_weight=w_all)
-
-    return model, study.best_params
+    return best_params, study.best_value
 
 
-def tune_and_train_xgb(train_df: pd.DataFrame, feature_cols: list, symbol: str):
+def tune_xgb(all_df, feature_cols, symbol):
     print(f"    Optuna XGBoost tuning ({OPTUNA_TRIALS} trials, {WALKFORWARD_FOLDS} folds)...")
-
-    splits = walkforward_split(train_df, WALKFORWARD_FOLDS)
-
+    splits = walkforward_split(all_df, WALKFORWARD_FOLDS)
     split_data = []
     for train_fold, val_fold in splits:
         X_tr = train_fold[feature_cols].values
@@ -200,96 +171,39 @@ def tune_and_train_xgb(train_df: pd.DataFrame, feature_cols: list, symbol: str):
     best_params["random_state"] = 42
     best_params["n_jobs"] = -1
     best_params["eval_metric"] = "mlogloss"
-
     print(f"    Best XGB accuracy (CV): {study.best_value:.4f}")
-
-    X_all = train_df[feature_cols].values
-    y_all = train_df["label"].values.copy()
-    y_all[y_all == -1] = 2
-    w_all = compute_time_weights(train_df)
-
-    model = xgb.XGBClassifier(**best_params)
-    model.fit(X_all, y_all, sample_weight=w_all)
-
-    return model, study.best_params
+    return best_params, study.best_value
 
 
-def evaluate_model(model, test_df: pd.DataFrame, feature_cols: list, model_name: str, symbol: str):
-    from sklearn.metrics import accuracy_score
-
-    X_test = test_df[feature_cols].values
-    y_test = test_df["label"].values.copy()
-    y_test[y_test == -1] = 2
-
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)
-
-    acc = accuracy_score(y_test, y_pred)
-    print(f"    {model_name} test accuracy: {acc:.4f}")
-
-    return {
-        "model_name": model_name,
-        "symbol": symbol,
-        "accuracy": acc,
-        "predictions": y_pred,
-        "probabilities": y_proba,
-        "true_labels": y_test,
-    }
-
-
-def compute_shap_importance(model, X_sample, feature_cols, model_name, symbol):
-    print(f"    Computing SHAP for {model_name}...")
-    try:
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X_sample)
-
-        if isinstance(shap_values, list):
-            mean_abs = np.mean([np.abs(sv).mean(axis=0) for sv in shap_values], axis=0)
-        else:
-            mean_abs = np.abs(shap_values).mean(axis=0)
-
-        importance = pd.DataFrame({
-            "feature": feature_cols,
-            "shap_importance": mean_abs,
-        }).sort_values("shap_importance", ascending=False)
-
-        return importance
-    except Exception as e:
-        print(f"    SHAP failed: {e}")
-        return None
-
-
-def train_all_models():
+def train_production_models():
     os.makedirs(MODELS_DIR, exist_ok=True)
+    start_time = time.time()
     results = {}
 
+    print("=" * 70)
+    print("PRODUCTION TRAINING - ALL 2 YEARS DATA (NO HOLDOUT)")
+    print("=" * 70)
+    print(f"Symbols: {SYMBOLS}")
+    print(f"Optuna trials: {OPTUNA_TRIALS}")
+    print(f"Walk-Forward folds: {WALKFORWARD_FOLDS}")
+    print(f"Models will be saved as *{PROD_SUFFIX}.pkl")
+    print()
+
     for symbol in SYMBOLS:
+        sym_start = time.time()
         print(f"\n{'='*60}")
-        print(f"Training models for {symbol}")
+        print(f"Training PRODUCTION models for {symbol}")
         print(f"{'='*60}")
 
-        lgb_path = os.path.join(MODELS_DIR, f"{symbol}_lightgbm_v2.pkl")
-        xgb_path = os.path.join(MODELS_DIR, f"{symbol}_xgboost_v2.pkl")
-        feature_cols_path = os.path.join(MODELS_DIR, f"{symbol}_feature_cols_v2.pkl")
-        test_path = os.path.join(DATA_DIR, symbol, "test_data_v2.parquet")
-
-        if all(os.path.exists(p) for p in [lgb_path, xgb_path, feature_cols_path, test_path]):
-            print(f"  Models already trained for {symbol}, loading...")
-            lgb_model = joblib.load(lgb_path)
-            xgb_model = joblib.load(xgb_path)
-            feature_cols = joblib.load(feature_cols_path)
-            test_df = pd.read_parquet(test_path)
-            lgb_eval = evaluate_model(lgb_model, test_df, feature_cols, "LightGBM", symbol)
-            xgb_eval = evaluate_model(xgb_model, test_df, feature_cols, "XGBoost", symbol)
-            results[symbol] = {"lightgbm": lgb_eval, "xgboost": xgb_eval}
-            print(f"\n  {symbol} LOADED: LGB={lgb_eval['accuracy']:.4f}, XGB={xgb_eval['accuracy']:.4f}")
-            continue
+        lgb_path = os.path.join(MODELS_DIR, f"{symbol}_lightgbm{PROD_SUFFIX}.pkl")
+        xgb_path = os.path.join(MODELS_DIR, f"{symbol}_xgboost{PROD_SUFFIX}.pkl")
+        fc_path = os.path.join(MODELS_DIR, f"{symbol}_feature_cols{PROD_SUFFIX}.pkl")
 
         feat_path = os.path.join(DATA_DIR, symbol, "features_v2.parquet")
         if not os.path.exists(feat_path):
             feat_path = os.path.join(DATA_DIR, symbol, "features.parquet")
         if not os.path.exists(feat_path):
-            print(f"  No features found for {symbol}, skipping")
+            print(f"  No features for {symbol}, skipping")
             continue
 
         df = pd.read_parquet(feat_path)
@@ -299,61 +213,118 @@ def train_all_models():
         df = df.replace([np.inf, -np.inf], np.nan)
         df[feature_cols] = df[feature_cols].fillna(0)
         df = df.dropna(subset=["label"])
-        print(f"  Rows: {valid_before} -> {len(df)} after cleaning")
+        df = df.sort_values("timestamp").reset_index(drop=True)
+        print(f"  Rows: {valid_before} -> {len(df)} (ALL used for training)")
         print(f"  Features: {len(feature_cols)}")
+        print(f"  Date range: {df['datetime'].min()} to {df['datetime'].max()}")
 
-        train_df, test_df = split_train_test(df)
-        print(f"  Train: {len(train_df)} rows, Test: {len(test_df)} rows")
+        lgb_cv_acc = 0
+        xgb_cv_acc = 0
 
         if os.path.exists(lgb_path):
-            print(f"\n  LightGBM already trained for {symbol}, loading...")
+            print(f"\n  LightGBM PROD already trained, loading...")
             lgb_model = joblib.load(lgb_path)
-            lgb_params = {}
         else:
-            print(f"\n  Training LightGBM for {symbol}...")
-            lgb_model, lgb_params = tune_and_train_lgb(train_df, feature_cols, symbol)
+            print(f"\n  Training LightGBM on ALL {len(df)} rows...")
+            lgb_params, lgb_cv_acc = tune_lgb(df, feature_cols, symbol)
+
+            X_all = df[feature_cols].values
+            y_all = df["label"].values.copy()
+            y_all[y_all == -1] = 2
+            w_all = compute_time_weights(df)
+
+            lgb_model = lgb.LGBMClassifier(**lgb_params)
+            lgb_model.fit(X_all, y_all, sample_weight=w_all)
             joblib.dump(lgb_model, lgb_path)
-        lgb_eval = evaluate_model(lgb_model, test_df, feature_cols, "LightGBM", symbol)
+            print(f"    Saved: {lgb_path}")
 
         if os.path.exists(xgb_path):
-            print(f"\n  XGBoost already trained for {symbol}, loading...")
+            print(f"\n  XGBoost PROD already trained, loading...")
             xgb_model = joblib.load(xgb_path)
-            xgb_params = {}
         else:
-            print(f"\n  Training XGBoost for {symbol}...")
-            xgb_model, xgb_params = tune_and_train_xgb(train_df, feature_cols, symbol)
+            print(f"\n  Training XGBoost on ALL {len(df)} rows...")
+            xgb_params, xgb_cv_acc = tune_xgb(df, feature_cols, symbol)
+
+            X_all = df[feature_cols].values
+            y_all = df["label"].values.copy()
+            y_all[y_all == -1] = 2
+            w_all = compute_time_weights(df)
+
+            xgb_model = xgb.XGBClassifier(**xgb_params)
+            xgb_model.fit(X_all, y_all, sample_weight=w_all)
             joblib.dump(xgb_model, xgb_path)
-        xgb_eval = evaluate_model(xgb_model, test_df, feature_cols, "XGBoost", symbol)
+            print(f"    Saved: {xgb_path}")
 
-        test_path = os.path.join(DATA_DIR, symbol, "test_data_v2.parquet")
-        test_df.to_parquet(test_path, index=False)
+        joblib.dump(feature_cols, fc_path)
 
-        feature_cols_path = os.path.join(MODELS_DIR, f"{symbol}_feature_cols_v2.pkl")
-        joblib.dump(feature_cols, feature_cols_path)
+        params_path = os.path.join(MODELS_DIR, f"{symbol}_best_params{PROD_SUFFIX}.pkl")
+        joblib.dump({
+            "lgb_cv_acc": lgb_cv_acc,
+            "xgb_cv_acc": xgb_cv_acc,
+        }, params_path)
 
-        params_path = os.path.join(MODELS_DIR, f"{symbol}_best_params.pkl")
-        joblib.dump({"lgb": lgb_params, "xgb": xgb_params}, params_path)
+        X_sample = df[feature_cols].values[-min(1000, len(df)):]
+        try:
+            explainer = shap.TreeExplainer(lgb_model)
+            shap_values = explainer.shap_values(X_sample)
+            if isinstance(shap_values, list):
+                mean_abs = np.mean([np.abs(sv).mean(axis=0) for sv in shap_values], axis=0)
+            else:
+                mean_abs = np.abs(shap_values).mean(axis=0)
+            importance = pd.DataFrame({
+                "feature": feature_cols,
+                "shap_importance": mean_abs,
+            }).sort_values("shap_importance", ascending=False)
+            shap_path = os.path.join(MODELS_DIR, f"{symbol}_shap_lgb{PROD_SUFFIX}.csv")
+            importance.to_csv(shap_path, index=False)
+        except Exception as e:
+            print(f"    SHAP failed: {e}")
 
-        X_sample = test_df[feature_cols].values[:min(1000, len(test_df))]
-        lgb_shap = compute_shap_importance(lgb_model, X_sample, feature_cols, "LightGBM", symbol)
-        xgb_shap = compute_shap_importance(xgb_model, X_sample, feature_cols, "XGBoost", symbol)
-
-        if lgb_shap is not None:
-            shap_path = os.path.join(MODELS_DIR, f"{symbol}_shap_lgb.csv")
-            lgb_shap.to_csv(shap_path, index=False)
-        if xgb_shap is not None:
-            shap_path = os.path.join(MODELS_DIR, f"{symbol}_shap_xgb.csv")
-            xgb_shap.to_csv(shap_path, index=False)
-
+        sym_elapsed = time.time() - sym_start
         results[symbol] = {
-            "lightgbm": lgb_eval,
-            "xgboost": xgb_eval,
+            "lgb_cv_acc": lgb_cv_acc,
+            "xgb_cv_acc": xgb_cv_acc,
+            "rows": len(df),
+            "features": len(feature_cols),
+            "time_sec": round(sym_elapsed, 1),
         }
+        print(f"\n  {symbol} DONE: LGB_CV={lgb_cv_acc:.4f}, XGB_CV={xgb_cv_acc:.4f} ({sym_elapsed:.0f}s)")
 
-        print(f"\n  {symbol} DONE: LGB={lgb_eval['accuracy']:.4f}, XGB={xgb_eval['accuracy']:.4f}")
+    total_time = time.time() - start_time
+    hours = int(total_time // 3600)
+    mins = int((total_time % 3600) // 60)
+    secs = int(total_time % 60)
+
+    print(f"\n{'='*70}")
+    print(f"PRODUCTION TRAINING COMPLETE")
+    print(f"{'='*70}")
+    print(f"Total time: {hours}h {mins}m {secs}s")
+    print(f"\nResults:")
+    print(f"{'Symbol':<12} {'Rows':>8} {'Features':>10} {'LGB_CV':>10} {'XGB_CV':>10} {'Time':>8}")
+    print("-" * 60)
+    for symbol, r in results.items():
+        print(f"{symbol:<12} {r['rows']:>8} {r['features']:>10} {r['lgb_cv_acc']:>10.4f} {r['xgb_cv_acc']:>10.4f} {r['time_sec']:>7.0f}s")
+
+    report_lines = []
+    report_lines.append("=" * 70)
+    report_lines.append("PRODUCTION MODELS - TRAINED ON ALL 2 YEARS")
+    report_lines.append("=" * 70)
+    report_lines.append(f"Date: {pd.Timestamp.now()}")
+    report_lines.append(f"Training time: {hours}h {mins}m {secs}s")
+    report_lines.append(f"")
+    report_lines.append(f"{'Symbol':<12} {'Rows':>8} {'Features':>10} {'LGB_CV':>10} {'XGB_CV':>10}")
+    report_lines.append("-" * 60)
+    for symbol, r in results.items():
+        report_lines.append(f"{symbol:<12} {r['rows']:>8} {r['features']:>10} {r['lgb_cv_acc']:>10.4f} {r['xgb_cv_acc']:>10.4f}")
+
+    os.makedirs(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "results"), exist_ok=True)
+    report_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "results", "production_training_report.txt")
+    with open(report_path, "w") as f:
+        f.write("\n".join(report_lines))
+    print(f"\nReport saved: {report_path}")
 
     return results
 
 
 if __name__ == "__main__":
-    train_all_models()
+    train_production_models()

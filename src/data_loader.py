@@ -15,7 +15,6 @@ BINANCE_VISION_URL = "https://data-api.binance.vision/api/v3/klines"
 BINANCE_LIMIT = 1000
 
 OKX_BASE_URL = "https://www.okx.com"
-OKX_LIMIT = 100
 
 BINANCE_INTERVALS = {
     "1": "1m",
@@ -229,10 +228,12 @@ def download_all_data():
     start_ms = int(START_DATE.timestamp() * 1000)
     end_ms = int(END_DATE.timestamp() * 1000)
 
+    print(f"Source: Binance Vision (klines) + OKX (funding/OI)")
+    print(f"Period: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
+
     for symbol in SYMBOLS:
         print(f"\n{'='*60}")
         print(f"Downloading data for {symbol}")
-        print(f"  Klines: Binance Vision | Funding/OI: OKX")
         print(f"{'='*60}")
 
         symbol_dir = os.path.join(DATA_DIR, symbol)

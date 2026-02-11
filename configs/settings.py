@@ -24,44 +24,41 @@ INTERVAL_NAMES = {
     "240": "4h",
 }
 
+ALL_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h"]
+PRIMARY_TF = "15m"
+
 END_DATE = datetime.utcnow()
 START_DATE = END_DATE - timedelta(days=730)
 
 BACKTEST_MONTHS = 3
 
-BYBIT_BASE_URL = "https://api.bybit.com"
-BYBIT_KLINE_LIMIT = 200
-BYBIT_RATE_LIMIT_DELAY = 0.05
+INITIAL_BALANCE = 500.0
+CONFIDENCE_THRESHOLD = 0.55
 
-PRIMARY_INTERVAL = "60"
-
-RISK_PROFILES = {
-    "conservative": {
-        "max_leverage": 3,
-        "max_position_pct": 0.05,
-        "max_daily_loss_pct": 0.03,
-        "max_concurrent_positions": 2,
-        "base_tp_pct": 0.02,
-        "base_sl_pct": 0.01,
-    },
-    "moderate": {
-        "max_leverage": 10,
-        "max_position_pct": 0.15,
-        "max_daily_loss_pct": 0.07,
-        "max_concurrent_positions": 4,
-        "base_tp_pct": 0.05,
-        "base_sl_pct": 0.02,
-    },
-    "aggressive": {
-        "max_leverage": 25,
-        "max_position_pct": 0.30,
-        "max_daily_loss_pct": 0.15,
-        "max_concurrent_positions": 6,
-        "base_tp_pct": 0.12,
-        "base_sl_pct": 0.05,
-    },
+DYNAMIC_RISK = {
+    "max_leverage": 20,
+    "min_leverage": 1,
+    "max_position_pct": 0.25,
+    "min_position_pct": 0.03,
+    "max_daily_loss_pct": 0.10,
+    "max_concurrent_positions": 3,
+    "base_tp_pct": 0.04,
+    "base_sl_pct": 0.02,
 }
 
-INITIAL_BALANCE = 500.0
+OPTUNA_TRIALS = 25
+WALKFORWARD_FOLDS = 5
+LABEL_HORIZON = 4
 
-CONFIDENCE_THRESHOLD = 0.52
+HIGHER_TF_FEATURES = [
+    "rsi_14", "macd_diff", "bb_pct", "bb_width", "adx",
+    "atr_14", "volume_ratio_10", "return_1", "return_5",
+    "stoch_k", "cci_14", "cmf",
+]
+
+LOWER_TF_FEATURES = [
+    "rsi_14", "macd_diff", "atr_14", "volume_ratio_10",
+    "return_1", "return_5", "volatility_5", "stoch_k",
+]
+
+TIME_WEIGHT_DECAY = 0.001
