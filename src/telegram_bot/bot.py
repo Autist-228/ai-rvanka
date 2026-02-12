@@ -180,38 +180,35 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_state(user_id)
     engine = get_engine(user_id)
 
-    trade_status = "\u0410\u043a\u0442\u0438\u0432\u043d\u0430" if state.trading_active else "\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430"
+    trade_status = "\U0001f7e2 \u0410\u043a\u0442\u0438\u0432\u043d\u0430" if state.trading_active else "\U0001f534 \u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430"
+    engine_status = "\U0001f7e2 \u0437\u0430\u043f\u0443\u0449\u0435\u043d" if (engine and engine._running) else "\U0001f534 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d"
     lines = [
         f"\U0001f4ca \u0421\u0442\u0430\u0442\u0443\u0441 \u0431\u043e\u0442\u0430\n",
         f"\u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f: {trade_status}\n",
-        f"\u0411\u0430\u043b\u0430\u043d\u0441: ${state.demo_balance:,.2f}\n",
-        f"\u041f\u043e\u0437\u0438\u0446\u0438\u0439: {len(state.open_positions)}\n",
-        f"\u0421\u0434\u0435\u043b\u043e\u043a: {state.get('stats', {}).get('total_trades', 0)}\n",
-        f"WR: {state.get_win_rate():.1f}%\n",
-        f"\u0421\u0435\u0441\u0441\u0438\u044f: #{state.session_counter}\n",
+        f"\u0414\u0432\u0438\u0436\u043e\u043a: {engine_status}\n",
+        f"\U0001f4b0 \u0411\u0430\u043b\u0430\u043d\u0441: ${state.demo_balance:,.2f}\n",
+        f"\U0001f4ca \u041f\u043e\u0437\u0438\u0446\u0438\u0439: {len(state.open_positions)}\n",
+        f"\U0001f4cb \u0421\u0434\u0435\u043b\u043e\u043a: {state.get('stats', {}).get('total_trades', 0)}\n",
+        f"\U0001f3c6 \u0412\u0438\u043d\u0440\u0435\u0439\u0442: {state.get_win_rate():.1f}%\n",
+        f"#\ufe0f\u20e3 \u0421\u0435\u0441\u0441\u0438\u044f: #{state.session_counter}\n",
     ]
-
-    if engine and engine._running:
-        lines.append(f"\u0414\u0432\u0438\u0436\u043e\u043a: \u0437\u0430\u043f\u0443\u0449\u0435\u043d\n")
-    else:
-        lines.append(f"\u0414\u0432\u0438\u0436\u043e\u043a: \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\n")
 
     await update.message.reply_text("".join(lines))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "\U0001f916 AI Rvanka Trading Bot\n\n"
+        "\U0001f916 AI Rvanka \u0422\u0440\u0435\u0439\u0434\u0438\u043d\u0433 \u0411\u043e\u0442\n\n"
         "\u041a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
         "/start \u2014 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e\n"
         "/status \u2014 \u0421\u0442\u0430\u0442\u0443\u0441 \u0431\u043e\u0442\u0430\n"
         "/help \u2014 \u041f\u043e\u043c\u043e\u0449\u044c\n\n"
-        "6 \u043c\u043e\u043d\u0435\u0442: BTC, ETH, SOL, XRP, BNB, DOGE\n"
-        "LightGBM ML \u043c\u043e\u0434\u0435\u043b\u0438\n"
-        "179 \u0442\u0435\u0445\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0445 \u0438\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440\u043e\u0432\n"
-        "5 \u0442\u0430\u0439\u043c\u0444\u0440\u0435\u0439\u043c\u043e\u0432 (1m, 5m, 15m, 1h, 4h)\n"
-        "ATR-based TP/SL + Trailing Stop\n"
-        "Dynamic Leverage + Risk Controller"
+        "\U0001f4b9 6 \u043c\u043e\u043d\u0435\u0442: BTC, ETH, SOL, XRP, BNB, DOGE\n"
+        "\U0001f9e0 LightGBM ML \u043c\u043e\u0434\u0435\u043b\u0438\n"
+        "\U0001f4ca 179 \u0442\u0435\u0445\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0445 \u0438\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440\u043e\u0432\n"
+        "\u23f0 5 \u0442\u0430\u0439\u043c\u0444\u0440\u0435\u0439\u043c\u043e\u0432 (1\u043c, 5\u043c, 15\u043c, 1\u0447, 4\u0447)\n"
+        "\U0001f3af \u0414\u0438\u043d\u0430\u043c\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0422\u041f/\u0421\u041b + \u0422\u0440\u0435\u0439\u043b\u0438\u043d\u0433 \u0421\u0442\u043e\u043f\n"
+        "\u2699\ufe0f \u0414\u0438\u043d\u0430\u043c\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u043f\u043b\u0435\u0447\u043e + \u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0440\u0438\u0441\u043a\u0430"
     )
     await update.message.reply_text(text)
 

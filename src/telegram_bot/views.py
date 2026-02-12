@@ -49,7 +49,7 @@ def format_main_view(state):
     balance = state.demo_balance
     unrealized_pnl = sum(p.get("pnl", 0) for p in positions)
 
-    lines = ["\U0001f916 AI Rvanka Trading Bot"]
+    lines = ["\U0001f916 AI Rvanka \u0422\u0440\u0435\u0439\u0434\u0438\u043d\u0433 \u0411\u043e\u0442"]
     lines.append("\u2501" * 28)
     lines.append(f"\U0001f4b0 \u0411\u0430\u043b\u0430\u043d\u0441: ${balance:,.2f}")
 
@@ -57,8 +57,8 @@ def format_main_view(state):
         ur_sign = "+" if unrealized_pnl >= 0 else ""
         ur_icon = "\U0001f4c8" if unrealized_pnl >= 0 else "\U0001f4c9"
         total_equity = balance + unrealized_pnl
-        lines.append(f"{ur_icon} \u041d\u0435\u0440\u0435\u0430\u043b. P&L: {ur_sign}{unrealized_pnl:,.2f}$")
-        lines.append(f"\U0001f48e Equity: ${total_equity:,.2f}")
+        lines.append(f"{ur_icon} \u041d\u0435\u0440\u0435\u0430\u043b. \u043f\u0440\u0438\u0431\u044b\u043b\u044c: {ur_sign}{unrealized_pnl:,.2f}$")
+        lines.append(f"\U0001f48e \u041a\u0430\u043f\u0438\u0442\u0430\u043b: ${total_equity:,.2f}")
 
     lines.append("")
     if trading:
@@ -79,6 +79,7 @@ def format_main_view(state):
         for pos in positions:
             direction = pos.get("direction_str", "?")
             d_icon = "\U0001f535" if direction == "LONG" else "\U0001f534"
+            d_ru = "\u041b\u041e\u041d\u0413" if direction == "LONG" else "\u0428\u041e\u0420\u0422"
             coin = pos.get("symbol", "???").replace("USDT", "")
             entry = pos.get("entry_price", 0)
             current = pos.get("current_price", entry)
@@ -91,10 +92,10 @@ def format_main_view(state):
             trailing = " \U0001f4d0" if pos.get("trailing_activated") else ""
             tp = pos.get("tp_price", 0)
             sl = pos.get("sl_price", 0)
-            lines.append(f"{d_icon} {direction} {coin} {lev}x{trailing}")
+            lines.append(f"{d_icon} {d_ru} {coin} {lev}x{trailing}")
             lines.append(f"   ${entry:,.2f} \u2192 ${current:,.2f}")
             lines.append(f"   {p_icon} {sign}{pnl:,.2f}$ ({sign_pct}{pnl_pct:.2f}%)")
-            lines.append(f"   \U0001f3af TP: ${tp:,.2f} | \U0001f6d1 SL: ${sl:,.2f}")
+            lines.append(f"   \U0001f3af \u0422\u041f: ${tp:,.2f} | \U0001f6d1 \u0421\u041b: ${sl:,.2f}")
     elif trading:
         lines.append("")
         lines.append("\u23f3 \u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435 \u0441\u0438\u0433\u043d\u0430\u043b\u043e\u0432...")
@@ -117,7 +118,7 @@ def format_main_view(state):
 
     total_trades = state.get("stats", {}).get("total_trades", 0)
     wr = state.get_win_rate()
-    lines.append(f"\U0001f3c6 WR: {wr:.1f}% | \u0412\u0441\u0435\u0433\u043e: {total_trades} \u0441\u0434.")
+    lines.append(f"\U0001f3c6 \u0412\u0438\u043d\u0440\u0435\u0439\u0442: {wr:.1f}% | \u0412\u0441\u0435\u0433\u043e: {total_trades} \u0441\u0434.")
     lines.append("\u2501" * 28)
 
     live_prices = getattr(state, "_live_prices", None)
@@ -153,8 +154,8 @@ def format_sessions_list(sessions):
         "\U0001f4cb \u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0441\u0435\u0441\u0441\u0438\u0439",
         "\u2501" * 28,
         f"\U0001f4ca \u0412\u0441\u0435\u0433\u043e \u0441\u0435\u0441\u0441\u0438\u0439: {len(sessions)}",
-        f"\U0001f4b0 \u041e\u0431\u0449\u0438\u0439 P&L: {_fmt_pnl(total_pnl)}",
-        f"\U0001f3c6 WR: {wr:.1f}% | {total_trades} \u0441\u0434.",
+        f"\U0001f4b0 \u041e\u0431\u0449\u0430\u044f \u043f\u0440\u0438\u0431\u044b\u043b\u044c: {_fmt_pnl(total_pnl)}",
+        f"\U0001f3c6 \u0412\u0438\u043d\u0440\u0435\u0439\u0442: {wr:.1f}% | {total_trades} \u0441\u0434.",
         "\u2501" * 28,
         "",
         "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0435\u0441\u0441\u0438\u044e:",
@@ -188,13 +189,13 @@ def format_session_detail(session_data):
         "\u2501" * 28,
         f"\u23f1 \u0414\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c: {dur}",
         f"\U0001f4b0 ${start_bal:,.2f} \u2192 ${end_bal:,.2f}",
-        f"{result_icon} P&L: {pnl_sign}{pnl:,.2f}$ ({pct_sign}{pnl_pct:.1f}%)",
-        f"\U0001f3c6 WR: {wr:.1f}% | {total_trades} \u0441\u0434. ({wins}W/{total_trades - wins}L)",
+        f"{result_icon} \u041f\u0440\u0438\u0431\u044b\u043b\u044c: {pnl_sign}{pnl:,.2f}$ ({pct_sign}{pnl_pct:.1f}%)",
+        f"\U0001f3c6 \u0412\u0438\u043d\u0440\u0435\u0439\u0442: {wr:.1f}% | {total_trades} \u0441\u0434. ({wins}\u0412/{total_trades - wins}\u041f)",
     ]
 
     if trades:
         lines.append("")
-        lines.append("\u2501" * 28)
+        lines.append("")
         lines.append("\U0001f4ca \u0421\u0434\u0435\u043b\u043a\u0438:")
         for t in trades[-15:]:
             sym = t.get("symbol", "?").replace("USDT", "")
@@ -204,8 +205,8 @@ def format_session_detail(session_data):
             t_icon = "\U0001f7e9" if t_pnl >= 0 else "\U0001f7e5"
             reason = t.get("reason", "?")
             reason_map = {
-                "TP": "\U0001f3af", "SL": "\U0001f6d1",
-                "TRAILING_SL": "\U0001f4d0", "SESSION_END": "\u23f9",
+                "TP": "\U0001f3af\u0422\u041f", "SL": "\U0001f6d1\u0421\u041b",
+                "TRAILING_SL": "\U0001f4d0\u0422\u0440\u0435\u0439\u043b", "SESSION_END": "\u23f9\u0421\u0442\u043e\u043f",
             }
             r_icon = reason_map.get(reason, "\u2753")
             entry_p = t.get("entry_price", 0)
@@ -213,7 +214,8 @@ def format_session_detail(session_data):
             lev = t.get("leverage", 1)
             trail = " \U0001f4d0" if t.get("trailing_activated") else ""
             t_sign = "+" if t_pnl >= 0 else ""
-            lines.append(f"  {d_icon} {d} {sym} {lev}x | {r_icon} {reason}{trail}")
+            d_ru = "\u041b\u041e\u041d\u0413" if d == "LONG" else "\u0428\u041e\u0420\u0422"
+            lines.append(f"  {d_icon} {d_ru} {sym} {lev}x | {r_icon}{trail}")
             lines.append(f"     ${entry_p:,.2f} \u2192 ${exit_p:,.2f} | {t_icon} {t_sign}{t_pnl:,.2f}$")
 
         if len(trades) > 15:
@@ -231,7 +233,7 @@ def format_session_detail(session_data):
 
     if coin_summary:
         lines.append("")
-        lines.append("\u2501" * 28)
+        lines.append("")
         lines.append("\U0001f4ca \u041f\u043e \u043c\u043e\u043d\u0435\u0442\u0430\u043c:")
         for sym, data in sorted(coin_summary.items(), key=lambda x: x[1]["pnl"], reverse=True):
             coin_name = sym.replace("USDT", "")
@@ -248,6 +250,6 @@ def format_session_detail(session_data):
     trail_count = sum(1 for t in trades if t.get("reason") == "TRAILING_SL")
     if total_trades > 0:
         lines.append("")
-        lines.append(f"\U0001f3af TP: {tp_count} | \U0001f6d1 SL: {sl_count} | \U0001f4d0 Trail: {trail_count}")
+        lines.append(f"\U0001f3af \u0422\u041f: {tp_count} | \U0001f6d1 \u0421\u041b: {sl_count} | \U0001f4d0 \u0422\u0440\u0435\u0439\u043b: {trail_count}")
 
     return "\n".join(lines)
