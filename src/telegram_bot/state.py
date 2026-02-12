@@ -43,6 +43,7 @@ class UserState:
                 "total_pnl": 0.0,
                 "daily_pnl": {},
             },
+            "max_positions": 6,
             "main_message_id": None,
             "main_chat_id": None,
             "created_at": datetime.utcnow().isoformat(),
@@ -217,6 +218,15 @@ class UserState:
         if total == 0:
             return 0.0
         return round(wins / total * 100, 1)
+
+    @property
+    def max_positions(self):
+        return self._data.get("max_positions", 6)
+
+    def set_max_positions(self, value):
+        self._data["max_positions"] = int(value)
+        self.save()
+        logger.info(f"Max positions set to {value} for user {self.user_id}")
 
     def set_balance(self, amount):
         self._data["demo_balance"] = round(amount, 2)

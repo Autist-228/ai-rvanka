@@ -72,8 +72,7 @@ def format_main_view(state):
     else:
         lines.append("\U0001f534 \u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f \u041e\u0421\u0422\u0410\u041d\u041e\u0412\u041b\u0415\u041d\u0410")
 
-    from src.portfolio_manager import PORTFOLIO_CONFIG
-    max_pos = PORTFOLIO_CONFIG["trading"]["max_concurrent_total"]
+    max_pos = state.max_positions
     lines.append(f"\U0001f4ca \u041f\u043e\u0437\u0438\u0446\u0438\u0439: {len(positions)}/{max_pos}")
 
     if positions:

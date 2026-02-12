@@ -21,6 +21,7 @@ from src.telegram_bot.keyboards import (
     confirm_start_keyboard, confirm_stop_keyboard,
     session_detail_keyboard, confirm_reset_keyboard,
     set_balance_keyboard,
+    set_positions_keyboard,
 )
 
 logging.basicConfig(
@@ -187,6 +188,27 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state.set_balance(amount)
             await refresh_main(query, state)
 
+    elif data == "set_positions":
+        if state.trading_active:
+            await _safe_edit(query, "\u274c \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u044e!", back_keyboard())
+            return
+        cur = state.max_positions
+        text = (
+            "\U0001f4ca \u041c\u0430\u043a\u0441 \u043f\u043e\u0437\u0438\u0446\u0438\u0439\n\n"
+            f"\u0422\u0435\u043a\u0443\u0449\u0435\u0435: {cur}\n\n"
+            "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u043b\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0432\u043e\u0451:"
+        )
+        await _safe_edit(query, text, set_positions_keyboard())
+
+    elif data.startswith("setpos_"):
+        val = data.split("_", 1)[1]
+        if val == "custom":
+            state.set("awaiting_positions_input", True)
+            await _safe_edit(query, "\u270d\ufe0f \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u043b-\u0432\u043e \u043f\u043e\u0437\u0438\u0446\u0438\u0439 (1-10):", back_keyboard())
+        else:
+            state.set_max_positions(int(val))
+            await refresh_main(query, state)
+
     elif data == "reset_balance":
         if state.trading_active:
             await _safe_edit(query, "\u274c \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u044e!", back_keyboard())
@@ -224,6 +246,34 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = get_state(user_id)
+
+    if state.get("awaiting_positions_input"):
+        state.set("awaiting_positions_input", False)
+        raw = update.message.text.strip()
+        try:
+            val = int(raw)
+        except ValueError:
+            await update.message.reply_text(
+                "\u274c \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e (1-10)",
+                reply_markup=back_keyboard(),
+            )
+            return
+        if val < 1 or val > 10:
+            await update.message.reply_text(
+                "\u274c \u041e\u0442 1 \u0434\u043e 10 \u043f\u043e\u0437\u0438\u0446\u0438\u0439",
+                reply_markup=back_keyboard(),
+            )
+            return
+        state.set_max_positions(val)
+        text = format_main_view(state)
+        msg = await update.message.reply_text(
+            text=text,
+            reply_markup=main_keyboard(state),
+        )
+        state.set("main_message_id", msg.message_id)
+        state.set("main_chat_id", msg.chat_id)
+        state.set("current_screen", "main")
+        return
 
     if not state.get("awaiting_balance_input"):
         return

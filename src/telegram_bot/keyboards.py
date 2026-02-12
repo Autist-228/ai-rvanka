@@ -23,6 +23,9 @@ def main_keyboard(state):
             InlineKeyboardButton("\U0001f504 \u0421\u0431\u0440\u043e\u0441 \u0431\u0430\u043b\u0430\u043d\u0441\u0430", callback_data="reset_balance"),
             InlineKeyboardButton("\U0001f4b0 \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0431\u0430\u043b\u0430\u043d\u0441", callback_data="set_balance"),
         ])
+        keyboard.append([
+            InlineKeyboardButton("\U0001f4ca \u041c\u0430\u043a\u0441 \u043f\u043e\u0437\u0438\u0446\u0438\u0439", callback_data="set_positions"),
+        ])
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -108,6 +111,22 @@ def set_balance_keyboard():
     if row:
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("\u270d\ufe0f \u0412\u0432\u0435\u0441\u0442\u0438 \u0441\u0432\u043e\u044e \u0441\u0443\u043c\u043c\u0443", callback_data="setbal_custom")])
+    keyboard.append([InlineKeyboardButton("\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="back_main")])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def set_positions_keyboard():
+    presets = [2, 3, 4, 6, 7, 8]
+    keyboard = []
+    row = []
+    for val in presets:
+        row.append(InlineKeyboardButton(str(val), callback_data=f"setpos_{val}"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("\u270d\ufe0f \u0412\u0432\u0435\u0441\u0442\u0438 \u0441\u0432\u043e\u0451 \u0447\u0438\u0441\u043b\u043e", callback_data="setpos_custom")])
     keyboard.append([InlineKeyboardButton("\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="back_main")])
     return InlineKeyboardMarkup(keyboard)
 

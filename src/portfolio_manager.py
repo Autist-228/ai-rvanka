@@ -182,7 +182,7 @@ PORTFOLIO_CONFIG = {
         "base_sl_pct": 0.02,
         "fee_pct": 0.0012,
         "max_concurrent_per_coin": 1,
-        "max_concurrent_total": 4,
+        "max_concurrent_total": 6,
         "confidence_threshold": 0.55,
     },
 

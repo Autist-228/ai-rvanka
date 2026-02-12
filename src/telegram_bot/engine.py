@@ -349,7 +349,7 @@ class TradingEngine:
         config = PORTFOLIO_CONFIG
         trading = config["trading"]
         positions = self.state.open_positions
-        max_concurrent = trading["max_concurrent_total"]
+        max_concurrent = self.state.max_positions
 
         if len(positions) >= max_concurrent:
             return
