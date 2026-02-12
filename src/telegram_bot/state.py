@@ -218,6 +218,20 @@ class UserState:
             return 0.0
         return round(wins / total * 100, 1)
 
+    def set_balance(self, amount):
+        self._data["demo_balance"] = round(amount, 2)
+        self._data["demo_balance_initial"] = round(amount, 2)
+        self._data["session_start_balance"] = round(amount, 2)
+        self._data["open_positions"] = []
+        self._data["stats"] = {
+            "total_trades": 0,
+            "total_wins": 0,
+            "total_pnl": 0.0,
+            "daily_pnl": {},
+        }
+        self.save()
+        logger.info(f"Balance set to ${amount:.2f} for user {self.user_id}")
+
     def reset_balance(self):
         self._data["demo_balance"] = 500.0
         self._data["demo_balance_initial"] = 500.0

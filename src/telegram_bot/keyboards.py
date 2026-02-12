@@ -19,7 +19,10 @@ def main_keyboard(state):
         keyboard.append([InlineKeyboardButton(f"\U0001f4ca \u0421\u0435\u0441\u0441\u0438\u044f #{session_num}", callback_data=f"session_detail_{session_num}_0")])
 
     if not trading:
-        keyboard.append([InlineKeyboardButton("\U0001f504 \u0421\u0431\u0440\u043e\u0441 \u0431\u0430\u043b\u0430\u043d\u0441\u0430", callback_data="reset_balance")])
+        keyboard.append([
+            InlineKeyboardButton("\U0001f504 \u0421\u0431\u0440\u043e\u0441 \u0431\u0430\u043b\u0430\u043d\u0441\u0430", callback_data="reset_balance"),
+            InlineKeyboardButton("\U0001f4b0 \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0431\u0430\u043b\u0430\u043d\u0441", callback_data="set_balance"),
+        ])
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -91,6 +94,22 @@ def confirm_stop_keyboard():
             InlineKeyboardButton("\u274c \u041e\u0442\u043c\u0435\u043d\u0430", callback_data="back_main"),
         ]
     ])
+
+
+def set_balance_keyboard():
+    presets = [500, 1000, 5000, 10000]
+    keyboard = []
+    row = []
+    for amt in presets:
+        row.append(InlineKeyboardButton(f"${amt:,}", callback_data=f"setbal_{amt}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("\u270d\ufe0f \u0412\u0432\u0435\u0441\u0442\u0438 \u0441\u0432\u043e\u044e \u0441\u0443\u043c\u043c\u0443", callback_data="setbal_custom")])
+    keyboard.append([InlineKeyboardButton("\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="back_main")])
+    return InlineKeyboardMarkup(keyboard)
 
 
 def confirm_reset_keyboard():

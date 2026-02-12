@@ -6,7 +6,7 @@ import asyncio
 from telegram import Update, BotCommand
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    ContextTypes,
+    MessageHandler, filters, ContextTypes,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -20,6 +20,7 @@ from src.telegram_bot.keyboards import (
     main_keyboard, back_keyboard, sessions_list_keyboard,
     confirm_start_keyboard, confirm_stop_keyboard,
     session_detail_keyboard, confirm_reset_keyboard,
+    set_balance_keyboard,
 )
 
 logging.basicConfig(
@@ -165,6 +166,27 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = format_sessions_list(sessions)
         await _safe_edit(query, text, sessions_list_keyboard(sessions, page=page))
 
+    elif data == "set_balance":
+        if state.trading_active:
+            await _safe_edit(query, "\u274c \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u044e!", back_keyboard())
+            return
+        text = (
+            "\U0001f4b0 \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0431\u0430\u043b\u0430\u043d\u0441\u0430\n\n"
+            f"\u0422\u0435\u043a\u0443\u0449\u0438\u0439: ${state.demo_balance:,.2f}\n\n"
+            "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0443\u043c\u043c\u0443 \u0438\u043b\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0432\u043e\u044e:"
+        )
+        await _safe_edit(query, text, set_balance_keyboard())
+
+    elif data.startswith("setbal_"):
+        val = data.split("_", 1)[1]
+        if val == "custom":
+            state.set("awaiting_balance_input", True)
+            await _safe_edit(query, "\u270d\ufe0f \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0443\u043c\u043c\u0443 \u0431\u0430\u043b\u0430\u043d\u0441\u0430 (\u0447\u0438\u0441\u043b\u043e, \u043d\u0430\u043f\u0440. 2500):", back_keyboard())
+        else:
+            amount = float(val)
+            state.set_balance(amount)
+            await refresh_main(query, state)
+
     elif data == "reset_balance":
         if state.trading_active:
             await _safe_edit(query, "\u274c \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u044e!", back_keyboard())
@@ -197,6 +219,42 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     else:
         logger.warning(f"Unknown callback: {data}")
+
+
+async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+
+    if not state.get("awaiting_balance_input"):
+        return
+
+    state.set("awaiting_balance_input", False)
+    raw = update.message.text.strip().replace(",", "").replace("$", "").replace(" ", "")
+    try:
+        amount = float(raw)
+    except ValueError:
+        await update.message.reply_text(
+            "\u274c \u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u0444\u043e\u0440\u043c\u0430\u0442. \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0447\u0438\u0441\u043b\u043e, \u043d\u0430\u043f\u0440. 2500",
+            reply_markup=back_keyboard(),
+        )
+        return
+
+    if amount < 10 or amount > 10_000_000:
+        await update.message.reply_text(
+            "\u274c \u0421\u0443\u043c\u043c\u0430 \u0434\u043e\u043b\u0436\u043d\u0430 \u0431\u044b\u0442\u044c \u043e\u0442 $10 \u0434\u043e $10,000,000",
+            reply_markup=back_keyboard(),
+        )
+        return
+
+    state.set_balance(amount)
+    text = format_main_view(state)
+    msg = await update.message.reply_text(
+        text=text,
+        reply_markup=main_keyboard(state),
+    )
+    state.set("main_message_id", msg.message_id)
+    state.set("main_chat_id", msg.chat_id)
+    state.set("current_screen", "main")
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,6 +317,7 @@ def run_bot():
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(callback_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
     logger.info("Starting bot...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
