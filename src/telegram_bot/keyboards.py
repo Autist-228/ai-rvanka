@@ -47,6 +47,7 @@ def settings_keyboard():
         [InlineKeyboardButton("📉 Стоп при просадке", callback_data="edit_max_drawdown_pct")],
         [InlineKeyboardButton("⏸ Пауза после лузов", callback_data="edit_consecutive_sl_pause")],
         [InlineKeyboardButton("🎯 TP/SL по монетам", callback_data="edit_coin_tpsl")],
+        [InlineKeyboardButton("🔄 Сбросить статистику", callback_data="reset_stats")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_main")],
     ]
     return InlineKeyboardMarkup(keyboard)

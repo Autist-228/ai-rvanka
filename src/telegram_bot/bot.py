@@ -18,6 +18,7 @@ from src.telegram_bot.views import (
     format_main_view, format_last_session,
     format_settings, format_setting_edit, format_coin_tpsl_edit,
 )
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from src.telegram_bot.keyboards import (
     main_keyboard, back_keyboard, settings_keyboard,
     confidence_keyboard, leverage_keyboard, max_position_keyboard,
@@ -323,6 +324,25 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sl = coin_tpsl[symbol]["sl_pct"]
         text = format_coin_tpsl_edit(symbol, tp, sl)
         await _safe_edit(query, text, coin_tpsl_detail_keyboard(symbol))
+
+    elif data == "reset_stats":
+        if state.trading_active:
+            await query.answer("Сначала остановите торговлю!", show_alert=True)
+            return
+        text = "🔄 Сбросить всю статистику?\n\nWin rate, история сделок, P&L — всё обнулится."
+        await _safe_edit(query, text, InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Да, сбросить!", callback_data="confirm_reset_stats"),
+             InlineKeyboardButton("❌ Отмена", callback_data="settings")]
+        ]))
+
+    elif data == "confirm_reset_stats":
+        state._data["trade_history"] = []
+        state._data["stats"] = {"total_trades": 0, "total_wins": 0, "total_pnl": 0.0, "daily_pnl": {}}
+        state._data["last_session"] = None
+        state.save()
+        await query.answer("Статистика сброшена!", show_alert=True)
+        text = format_settings(state)
+        await _safe_edit(query, text, settings_keyboard())
 
     elif data.startswith("set_sl_"):
         parts = data.split("_")

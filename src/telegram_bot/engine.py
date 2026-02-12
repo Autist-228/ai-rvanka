@@ -91,17 +91,26 @@ class ModelPredictor:
             xgb_direction = label_map.get(xgb_pred, 0)
             xgb_confidence = xgb_proba[xgb_pred]
 
-            if lgb_direction != xgb_direction:
-                return {"direction": 0, "confidence": 0.0, "ensemble": "disagree"}
+            if lgb_direction == xgb_direction:
+                confidence = (lgb_confidence + xgb_confidence) / 2
+                return {"direction": lgb_direction, "confidence": round(confidence, 4), "ensemble": "agree"}
 
-            confidence = (lgb_confidence + xgb_confidence) / 2
+            best_dir, best_conf, best_src = 0, 0.0, "disagree"
+            if lgb_direction != 0 and lgb_confidence > best_conf:
+                best_dir, best_conf, best_src = lgb_direction, lgb_confidence, "lgb_lead"
+            if xgb_direction != 0 and xgb_confidence > best_conf:
+                best_dir, best_conf, best_src = xgb_direction, xgb_confidence, "xgb_lead"
+            if best_dir != 0 and best_conf >= 0.45:
+                return {"direction": best_dir, "confidence": round(best_conf * 0.90, 4), "ensemble": best_src}
+
+            return {"direction": 0, "confidence": 0.0, "ensemble": "disagree"}
         else:
             confidence = lgb_confidence
 
         return {
             "direction": lgb_direction,
             "confidence": round(confidence, 4),
-            "ensemble": "agree",
+            "ensemble": "single",
         }
 
 
@@ -234,11 +243,13 @@ class TradingEngine:
         logger.info("Refresh loop ENDED")
 
     async def _signal_loop(self):
+        logger.info("Signal loop STARTED")
         while self._running:
             try:
                 await self._check_signals()
-                await asyncio.sleep(60)
+                await asyncio.sleep(30)
             except asyncio.CancelledError:
+                logger.info("Signal loop CANCELLED")
                 break
             except Exception as e:
                 logger.error(f"Signal loop error: {e}")
@@ -256,6 +267,8 @@ class TradingEngine:
             return
 
         active_symbols = {p["symbol"] for p in positions}
+        conf_threshold = settings.get("confidence_threshold", 0.65)
+        logger.info(f"Signal check: {len(positions)}/{max_concurrent} pos, threshold={conf_threshold:.2f}")
 
         for symbol in SYMBOLS:
             if symbol in active_symbols:
@@ -266,24 +279,38 @@ class TradingEngine:
             try:
                 klines = {}
                 tf_intervals = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240"}
+                fetch_tasks = []
                 for tf_name, tf_int in tf_intervals.items():
-                    df = await self.prices.fetch_klines(symbol, tf_int, 300)
-                    if df is not None:
-                        klines[tf_name] = df
+                    fetch_tasks.append((tf_name, self.prices.fetch_klines(symbol, tf_int, 300)))
+                results = await asyncio.gather(*[t[1] for t in fetch_tasks], return_exceptions=True)
+                for (tf_name, _), result in zip(fetch_tasks, results):
+                    if isinstance(result, Exception):
+                        logger.warning(f"{symbol} {tf_name} kline error: {result}")
+                    elif result is not None:
+                        klines[tf_name] = result
 
                 if PRIMARY_TF not in klines:
+                    logger.warning(f"{symbol}: missing {PRIMARY_TF} klines, skip")
                     continue
 
                 features_df = self._build_live_features(symbol, klines)
                 if features_df is None or len(features_df) < 50:
+                    logger.warning(f"{symbol}: features={0 if features_df is None else len(features_df)}, skip")
                     continue
 
                 prediction = self.predictor.predict(symbol, features_df)
-                if prediction is None or prediction["direction"] == 0:
+                if prediction is None:
+                    logger.warning(f"{symbol}: prediction=None, skip")
                     continue
 
-                conf_threshold = settings.get("confidence_threshold", 0.65)
-                if prediction["confidence"] < conf_threshold:
+                direction = prediction["direction"]
+                confidence = prediction["confidence"]
+                dir_str = {1: "LONG", -1: "SHORT", 0: "HOLD"}.get(direction, "?")
+                logger.info(f"{symbol}: {dir_str} conf={confidence:.3f} (need>{conf_threshold:.2f})")
+
+                if direction == 0:
+                    continue
+                if confidence < conf_threshold:
                     continue
 
                 await self._open_position(symbol, prediction, features_df)
