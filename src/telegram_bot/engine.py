@@ -210,20 +210,28 @@ class TradingEngine:
         logger.info(f"Trading stopped for user {self.state.user_id}")
 
     async def _refresh_loop(self):
+        logger.info("Refresh loop STARTED")
         while self._running:
             try:
                 await self.prices.fetch_current_prices()
+                self.state._live_prices = self.prices.get_all_prices()
+                self.state._last_update_ts = time.time()
                 await self._update_positions()
 
                 if self._on_update_callback:
-                    await self._on_update_callback()
+                    try:
+                        await self._on_update_callback()
+                    except Exception as cb_err:
+                        logger.error(f"on_update callback error: {cb_err}")
 
                 await asyncio.sleep(5)
             except asyncio.CancelledError:
+                logger.info("Refresh loop CANCELLED")
                 break
             except Exception as e:
                 logger.error(f"Refresh loop error: {e}")
                 await asyncio.sleep(5)
+        logger.info("Refresh loop ENDED")
 
     async def _signal_loop(self):
         while self._running:

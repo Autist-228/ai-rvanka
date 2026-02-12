@@ -137,7 +137,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         engine = TradingEngine(state, _predictor, _price_tracker)
 
         async def on_update():
-            if state.get("current_screen") != "main":
+            screen = state.get("current_screen")
+            if screen != "main":
+                logger.debug(f"on_update skip: screen={screen}")
                 return
             msg_id = state.get("main_message_id")
             chat_id = state.get("main_chat_id")
@@ -152,8 +154,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         text=text,
                         reply_markup=main_keyboard(state),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    err_str = str(e)
+                    if "not modified" not in err_str.lower():
+                        logger.error(f"on_update edit error: {e}")
 
         engine.set_callbacks(on_trade=None, on_update=on_update)
         _trading_engines[user_id] = engine

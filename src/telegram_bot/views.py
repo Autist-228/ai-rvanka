@@ -1,10 +1,29 @@
+import time
 from datetime import datetime, timedelta
+
+COIN_ORDER = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT"]
+COIN_SHORT = {"BTCUSDT": "BTC", "ETHUSDT": "ETH", "SOLUSDT": "SOL", "XRPUSDT": "XRP", "BNBUSDT": "BNB", "DOGEUSDT": "DOGE"}
 
 
 def _fmt_pnl(val):
     sign = "+" if val >= 0 else ""
     icon = "\U0001f7e9" if val >= 0 else "\U0001f7e5"
     return f"{icon} {sign}{val:,.2f}$"
+
+
+def _fmt_price(symbol, price_data):
+    short = COIN_SHORT.get(symbol, symbol.replace("USDT", ""))
+    last = price_data.get("last", 0)
+    chg = price_data.get("change24h", 0)
+    chg_icon = "\U0001f7e2" if chg >= 0 else "\U0001f534"
+    chg_sign = "+" if chg >= 0 else ""
+    if last >= 1000:
+        p_str = f"${last:,.0f}"
+    elif last >= 1:
+        p_str = f"${last:,.2f}"
+    else:
+        p_str = f"${last:,.4f}"
+    return f"{chg_icon} {short}: {p_str} ({chg_sign}{chg:.1f}%)"
 
 
 def format_main_view(state):
@@ -91,6 +110,20 @@ def format_main_view(state):
     total_trades = state.get("stats", {}).get("total_trades", 0)
     wr = state.get_win_rate()
     lines.append(f"\U0001f3c6 WR: {wr:.1f}% | \u0421\u0434\u0435\u043b\u043e\u043a: {total_trades}")
+
+    live_prices = getattr(state, "_live_prices", None)
+    if live_prices and trading:
+        lines.append("")
+        lines.append("\u2501" * 24)
+        lines.append("\U0001f4b9 \u0420\u044b\u043d\u043e\u043a:")
+        for sym in COIN_ORDER:
+            if sym in live_prices:
+                lines.append(_fmt_price(sym, live_prices[sym]))
+        ts = getattr(state, "_last_update_ts", None)
+        if ts:
+            from datetime import timezone
+            upd = datetime.fromtimestamp(ts, tz=timezone.utc)
+            lines.append(f"\U0001f552 {upd.strftime('%H:%M:%S')} UTC")
 
     return "\n".join(lines)
 
