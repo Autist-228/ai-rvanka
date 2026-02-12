@@ -217,3 +217,17 @@ class UserState:
         if total == 0:
             return 0.0
         return round(wins / total * 100, 1)
+
+    def reset_balance(self):
+        self._data["demo_balance"] = 500.0
+        self._data["demo_balance_initial"] = 500.0
+        self._data["session_start_balance"] = 500.0
+        self._data["open_positions"] = []
+        self._data["stats"] = {
+            "total_trades": 0,
+            "total_wins": 0,
+            "total_pnl": 0.0,
+            "daily_pnl": {},
+        }
+        self.save()
+        logger.info(f"Balance reset to $500 for user {self.user_id}")

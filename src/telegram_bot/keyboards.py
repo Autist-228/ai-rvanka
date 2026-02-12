@@ -5,26 +5,43 @@ def main_keyboard(state):
     trading = state.trading_active
 
     if trading:
-        trade_row = [InlineKeyboardButton("⏹ Стоп торговли", callback_data="stop_trading")]
+        trade_row = [InlineKeyboardButton("\u23f9 \u0421\u0442\u043e\u043f \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u0438", callback_data="stop_trading")]
     else:
-        trade_row = [InlineKeyboardButton("▶️ Старт торговли", callback_data="start_trading")]
+        trade_row = [InlineKeyboardButton("\u25b6\ufe0f \u0421\u0442\u0430\u0440\u0442 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u0438", callback_data="start_trading")]
 
     keyboard = [
         trade_row,
-        [InlineKeyboardButton("📋 История сессий", callback_data="sessions_list")],
+        [InlineKeyboardButton("\U0001f4cb \u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0441\u0435\u0441\u0441\u0438\u0439", callback_data="sessions_list")],
     ]
 
     session_num = state.session_counter
     if session_num > 0:
-        keyboard.append([InlineKeyboardButton(f"📊 Сессия #{session_num}", callback_data=f"session_detail_{session_num}")])
+        keyboard.append([InlineKeyboardButton(f"\U0001f4ca \u0421\u0435\u0441\u0441\u0438\u044f #{session_num}", callback_data=f"session_detail_{session_num}_0")])
+
+    if not trading:
+        keyboard.append([InlineKeyboardButton("\U0001f504 \u0421\u0431\u0440\u043e\u0441 \u0431\u0430\u043b\u0430\u043d\u0441\u0430", callback_data="reset_balance")])
 
     return InlineKeyboardMarkup(keyboard)
 
 
 def back_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_main")]
+        [InlineKeyboardButton("\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="back_main")]
     ])
+
+
+def session_detail_keyboard(session_num, trade_page=0, total_trade_pages=1):
+    keyboard = []
+    if total_trade_pages > 1:
+        nav = []
+        if trade_page > 0:
+            nav.append(InlineKeyboardButton("\u25c0\ufe0f", callback_data=f"session_detail_{session_num}_{trade_page - 1}"))
+        nav.append(InlineKeyboardButton(f"\U0001f4c4 {trade_page + 1}/{total_trade_pages}", callback_data="noop"))
+        if trade_page < total_trade_pages - 1:
+            nav.append(InlineKeyboardButton("\u25b6\ufe0f", callback_data=f"session_detail_{session_num}_{trade_page + 1}"))
+        keyboard.append(nav)
+    keyboard.append([InlineKeyboardButton("\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="back_main")])
+    return InlineKeyboardMarkup(keyboard)
 
 
 def sessions_list_keyboard(sessions, page=0, per_page=5):
@@ -35,33 +52,34 @@ def sessions_list_keyboard(sessions, page=0, per_page=5):
     for s in reversed(sessions[start:end]):
         num = s.get("session_number", "?")
         pnl = s.get("pnl", 0)
-        icon = "🟩" if pnl >= 0 else "🟥"
+        icon = "\U0001f7e9" if pnl >= 0 else "\U0001f7e5"
         sign = "+" if pnl >= 0 else ""
         trades = s.get("total_trades", 0)
+        wr = s.get("win_rate", 0)
         keyboard.append([InlineKeyboardButton(
-            f"{icon} #{num} | {sign}{pnl:,.2f}$ | {trades} сд.",
-            callback_data=f"session_detail_{num}",
+            f"{icon} #{num} | {sign}{pnl:,.2f}$ | {trades} \u0441\u0434. | {wr:.0f}%",
+            callback_data=f"session_detail_{num}_0",
         )])
 
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton("◀️", callback_data=f"sessions_page_{page - 1}"))
+        nav_row.append(InlineKeyboardButton("\u25c0\ufe0f", callback_data=f"sessions_page_{page - 1}"))
     total_pages = max(1, (len(sessions) + per_page - 1) // per_page)
     nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
     if end < len(sessions):
-        nav_row.append(InlineKeyboardButton("▶️", callback_data=f"sessions_page_{page + 1}"))
+        nav_row.append(InlineKeyboardButton("\u25b6\ufe0f", callback_data=f"sessions_page_{page + 1}"))
     if nav_row:
         keyboard.append(nav_row)
 
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_main")])
+    keyboard.append([InlineKeyboardButton("\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="back_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
 def confirm_start_keyboard():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Да, запустить!", callback_data="confirm_start"),
-            InlineKeyboardButton("❌ Отмена", callback_data="back_main"),
+            InlineKeyboardButton("\u2705 \u0414\u0430, \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c!", callback_data="confirm_start"),
+            InlineKeyboardButton("\u274c \u041e\u0442\u043c\u0435\u043d\u0430", callback_data="back_main"),
         ]
     ])
 
@@ -69,7 +87,16 @@ def confirm_start_keyboard():
 def confirm_stop_keyboard():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Да, остановить!", callback_data="confirm_stop"),
-            InlineKeyboardButton("❌ Отмена", callback_data="back_main"),
+            InlineKeyboardButton("\u2705 \u0414\u0430, \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c!", callback_data="confirm_stop"),
+            InlineKeyboardButton("\u274c \u041e\u0442\u043c\u0435\u043d\u0430", callback_data="back_main"),
+        ]
+    ])
+
+
+def confirm_reset_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("\u2705 \u0414\u0430, \u0441\u0431\u0440\u043e\u0441\u0438\u0442\u044c!", callback_data="confirm_reset"),
+            InlineKeyboardButton("\u274c \u041e\u0442\u043c\u0435\u043d\u0430", callback_data="back_main"),
         ]
     ])

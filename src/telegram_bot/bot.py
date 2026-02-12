@@ -19,6 +19,7 @@ from src.telegram_bot.views import (
 from src.telegram_bot.keyboards import (
     main_keyboard, back_keyboard, sessions_list_keyboard,
     confirm_start_keyboard, confirm_stop_keyboard,
+    session_detail_keyboard, confirm_reset_keyboard,
 )
 
 logging.basicConfig(
@@ -164,15 +165,38 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = format_sessions_list(sessions)
         await _safe_edit(query, text, sessions_list_keyboard(sessions, page=page))
 
+    elif data == "reset_balance":
+        if state.trading_active:
+            await _safe_edit(query, "\u274c \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u044e!", back_keyboard())
+            return
+        text = (
+            "\U0001f504 \u0421\u0431\u0440\u043e\u0441 \u0431\u0430\u043b\u0430\u043d\u0441\u0430\n\n"
+            f"\U0001f4b0 \u0422\u0435\u043a\u0443\u0449\u0438\u0439: ${state.demo_balance:,.2f}\n"
+            "\U0001f195 \u041d\u043e\u0432\u044b\u0439: $500.00\n\n"
+            "\u26a0\ufe0f \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430 \u0431\u0443\u0434\u0435\u0442 \u0441\u0431\u0440\u043e\u0448\u0435\u043d\u0430.\n"
+            "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0441\u0435\u0441\u0441\u0438\u0439 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u0441\u044f."
+        )
+        await _safe_edit(query, text, confirm_reset_keyboard())
+
+    elif data == "confirm_reset":
+        state.reset_balance()
+        await refresh_main(query, state)
+
     elif data.startswith("session_detail_"):
-        session_num = int(data.split("_")[-1])
+        parts = data.split("_")
+        session_num = int(parts[2])
+        trade_page = int(parts[3]) if len(parts) > 3 else 0
         state.set("current_screen", "session_detail")
         session_data = state.get_session(session_num)
-        text = format_session_detail(session_data)
-        await _safe_edit(query, text, back_keyboard())
+        text, total_pages = format_session_detail(session_data, trade_page)
+        kb = session_detail_keyboard(session_num, trade_page, total_pages)
+        await _safe_edit(query, text, kb)
 
     elif data == "noop":
         pass
+
+    else:
+        logger.warning(f"Unknown callback: {data}")
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

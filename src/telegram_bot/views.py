@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 COIN_ORDER = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT"]
 COIN_SHORT = {"BTCUSDT": "BTC", "ETHUSDT": "ETH", "SOLUSDT": "SOL", "XRPUSDT": "XRP", "BNBUSDT": "BNB", "DOGEUSDT": "DOGE"}
 
+TRADES_PER_PAGE = 10
+
 
 def _fmt_pnl(val):
     sign = "+" if val >= 0 else ""
@@ -163,9 +165,9 @@ def format_sessions_list(sessions):
     return "\n".join(lines)
 
 
-def format_session_detail(session_data):
+def format_session_detail(session_data, trade_page=0):
     if not session_data:
-        return "\u274c \u0421\u0435\u0441\u0441\u0438\u044f \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430"
+        return "\u274c \u0421\u0435\u0441\u0441\u0438\u044f \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430", 0
 
     num = session_data.get("session_number", "?")
     start_time = session_data.get("start_time", "?")
@@ -193,33 +195,13 @@ def format_session_detail(session_data):
         f"\U0001f3c6 \u0412\u0438\u043d\u0440\u0435\u0439\u0442: {wr:.1f}% | {total_trades} \u0441\u0434. ({wins}\u0412/{total_trades - wins}\u041f)",
     ]
 
-    if trades:
-        lines.append("")
-        lines.append("")
-        lines.append("\U0001f4ca \u0421\u0434\u0435\u043b\u043a\u0438:")
-        for t in trades[-15:]:
-            sym = t.get("symbol", "?").replace("USDT", "")
-            d = t.get("direction_str", "?")
-            d_icon = "\U0001f535" if d == "LONG" else "\U0001f534"
-            t_pnl = t.get("pnl", 0)
-            t_icon = "\U0001f7e9" if t_pnl >= 0 else "\U0001f7e5"
-            reason = t.get("reason", "?")
-            reason_map = {
-                "TP": "\U0001f3af\u0422\u041f", "SL": "\U0001f6d1\u0421\u041b",
-                "TRAILING_SL": "\U0001f4d0\u0422\u0440\u0435\u0439\u043b", "SESSION_END": "\u23f9\u0421\u0442\u043e\u043f",
-            }
-            r_icon = reason_map.get(reason, "\u2753")
-            entry_p = t.get("entry_price", 0)
-            exit_p = t.get("exit_price", 0)
-            lev = t.get("leverage", 1)
-            trail = " \U0001f4d0" if t.get("trailing_activated") else ""
-            t_sign = "+" if t_pnl >= 0 else ""
-            d_ru = "\u041b\u041e\u041d\u0413" if d == "LONG" else "\u0428\u041e\u0420\u0422"
-            lines.append(f"  {d_icon} {d_ru} {sym} {lev}x | {r_icon}{trail}")
-            lines.append(f"     ${entry_p:,.2f} \u2192 ${exit_p:,.2f} | {t_icon} {t_sign}{t_pnl:,.2f}$")
+    total_trade_pages = max(1, (len(trades) + TRADES_PER_PAGE - 1) // TRADES_PER_PAGE)
 
-        if len(trades) > 15:
-            lines.append(f"  ... \u0438 \u0435\u0449\u0451 {len(trades) - 15} \u0441\u0434.")
+    tp_count = sum(1 for t in trades if t.get("reason") == "TP")
+    sl_count = sum(1 for t in trades if t.get("reason") == "SL")
+    trail_count = sum(1 for t in trades if t.get("reason") == "TRAILING_SL")
+    if total_trades > 0:
+        lines.append(f"\U0001f3af \u0422\u041f: {tp_count} | \U0001f6d1 \u0421\u041b: {sl_count} | \U0001f4d0 \u0422\u0440\u0435\u0439\u043b: {trail_count}")
 
     coin_summary = {}
     for t in trades:
@@ -233,23 +215,48 @@ def format_session_detail(session_data):
 
     if coin_summary:
         lines.append("")
-        lines.append("")
         lines.append("\U0001f4ca \u041f\u043e \u043c\u043e\u043d\u0435\u0442\u0430\u043c:")
         for sym, data in sorted(coin_summary.items(), key=lambda x: x[1]["pnl"], reverse=True):
             coin_name = sym.replace("USDT", "")
             wr_coin = round(data["wins"] / max(data["trades"], 1) * 100, 1)
             p_icon = "\U0001f7e9" if data["pnl"] >= 0 else "\U0001f7e5"
             c_sign = "+" if data["pnl"] >= 0 else ""
+            coin_pnl = data["pnl"]
+            coin_tr = data["trades"]
             lines.append(
-                f"  {p_icon} {coin_name}: {data['trades']} \u0441\u0434. | "
-                f"WR {wr_coin:.0f}% | {c_sign}{data['pnl']:,.2f}$"
+                f"  {coin_name}: {p_icon} {c_sign}{coin_pnl:,.2f}$ | {coin_tr} \u0441\u0434. | {wr_coin:.0f}%"
             )
 
-    tp_count = sum(1 for t in trades if t.get("reason") == "TP")
-    sl_count = sum(1 for t in trades if t.get("reason") == "SL")
-    trail_count = sum(1 for t in trades if t.get("reason") == "TRAILING_SL")
-    if total_trades > 0:
-        lines.append("")
-        lines.append(f"\U0001f3af \u0422\u041f: {tp_count} | \U0001f6d1 \u0421\u041b: {sl_count} | \U0001f4d0 \u0422\u0440\u0435\u0439\u043b: {trail_count}")
+    if trades:
+        start_idx = trade_page * TRADES_PER_PAGE
+        end_idx = min(start_idx + TRADES_PER_PAGE, len(trades))
+        page_trades = trades[start_idx:end_idx]
 
-    return "\n".join(lines)
+        lines.append("")
+        if total_trade_pages > 1:
+            lines.append(f"\U0001f4ca \u0421\u0434\u0435\u043b\u043a\u0438 ({start_idx + 1}-{end_idx} \u0438\u0437 {len(trades)}):")
+        else:
+            lines.append(f"\U0001f4ca \u0421\u0434\u0435\u043b\u043a\u0438 ({len(trades)}):")
+
+        for t in page_trades:
+            sym = t.get("symbol", "?").replace("USDT", "")
+            d = t.get("direction_str", "?")
+            d_icon = "\U0001f535" if d == "LONG" else "\U0001f534"
+            d_ru = "\u041b\u041e\u041d\u0413" if d == "LONG" else "\u0428\u041e\u0420\u0422"
+            t_pnl = t.get("pnl", 0)
+            t_icon = "\U0001f7e9" if t_pnl >= 0 else "\U0001f7e5"
+            reason = t.get("reason", "?")
+            reason_map = {
+                "TP": "\U0001f3af\u0422\u041f", "SL": "\U0001f6d1\u0421\u041b",
+                "TRAILING_SL": "\U0001f4d0\u0422\u0440\u0435\u0439\u043b", "SESSION_END": "\u23f9\u0421\u0442\u043e\u043f",
+            }
+            r_icon = reason_map.get(reason, "\u2753")
+            entry_p = t.get("entry_price", 0)
+            exit_p = t.get("exit_price", 0)
+            lev = t.get("leverage", 1)
+            trail = " \U0001f4d0" if t.get("trailing_activated") else ""
+            t_sign = "+" if t_pnl >= 0 else ""
+            lines.append(f"  {d_icon} {d_ru} {sym} {lev}x | {r_icon}{trail}")
+            lines.append(f"     ${entry_p:,.2f} \u2192 ${exit_p:,.2f} | {t_icon} {t_sign}{t_pnl:,.2f}$")
+
+    return "\n".join(lines), total_trade_pages
