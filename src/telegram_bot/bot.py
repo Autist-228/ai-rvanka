@@ -180,9 +180,10 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_state(user_id)
     engine = get_engine(user_id)
 
+    trade_status = "\u0410\u043a\u0442\u0438\u0432\u043d\u0430" if state.trading_active else "\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430"
     lines = [
         f"\U0001f4ca \u0421\u0442\u0430\u0442\u0443\u0441 \u0431\u043e\u0442\u0430\n",
-        f"\u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f: {'\u0410\u043a\u0442\u0438\u0432\u043d\u0430' if state.trading_active else '\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430'}\n",
+        f"\u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f: {trade_status}\n",
         f"\u0411\u0430\u043b\u0430\u043d\u0441: ${state.demo_balance:,.2f}\n",
         f"\u041f\u043e\u0437\u0438\u0446\u0438\u0439: {len(state.open_positions)}\n",
         f"\u0421\u0434\u0435\u043b\u043e\u043a: {state.get('stats', {}).get('total_trades', 0)}\n",
