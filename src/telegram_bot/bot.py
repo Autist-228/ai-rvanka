@@ -15,9 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from src.telegram_bot.state import UserState
 from src.telegram_bot.engine import TradingEngine, ModelPredictor, PriceTracker
 from src.telegram_bot.views import (
-    format_main_view, format_open_positions, format_last_session,
+    format_main_view, format_last_session,
     format_settings, format_setting_edit, format_coin_tpsl_edit,
-    format_trade_notification,
 )
 from src.telegram_bot.keyboards import (
     main_keyboard, back_keyboard, settings_keyboard,
@@ -53,14 +52,25 @@ def get_engine(user_id):
 
 
 async def _safe_edit(query, text, reply_markup=None):
+    if len(text) > 4096:
+        text = text[:4090] + "\n..."
     try:
         await query.edit_message_text(
             text=text,
             reply_markup=reply_markup,
         )
     except Exception as e:
-        if "Message is not modified" not in str(e):
+        err = str(e)
+        if "Message is not modified" not in err:
             logger.error(f"Edit error: {e}")
+            if "Bad Request" in err:
+                try:
+                    await query.edit_message_text(
+                        text="⚠️ Ошибка отображения. Нажмите 🔄",
+                        reply_markup=reply_markup,
+                    )
+                except Exception:
+                    pass
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,6 +85,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state.set("main_message_id", msg.message_id)
     state.set("main_chat_id", msg.chat_id)
+    state.set("current_screen", "main")
 
 
 async def refresh_main(query, state):
@@ -91,6 +102,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == "refresh" or data == "back_main":
+        state.set("current_screen", "main")
         await refresh_main(query, state)
 
     elif data == "start_trading":
@@ -124,21 +136,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         engine = TradingEngine(state, _predictor, _price_tracker)
 
-        async def on_trade(action, trade_data):
-            chat_id = state.get("main_chat_id")
-            if chat_id:
-                text = format_trade_notification(action, trade_data)
-                try:
-                    await context.bot.send_message(chat_id=chat_id, text=text)
-                except Exception as e:
-                    logger.error(f"Trade notification error: {e}")
-
         async def on_update():
+            if state.get("current_screen") != "main":
+                return
             msg_id = state.get("main_message_id")
             chat_id = state.get("main_chat_id")
             if msg_id and chat_id:
                 try:
                     text = format_main_view(state)
+                    if len(text) > 4096:
+                        text = text[:4090] + "\n..."
                     await context.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=msg_id,
@@ -148,7 +155,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
 
-        engine.set_callbacks(on_trade=on_trade, on_update=on_update)
+        engine.set_callbacks(on_trade=None, on_update=on_update)
         _trading_engines[user_id] = engine
         await engine.start()
 
@@ -186,14 +193,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Сначала остановите торговлю!", show_alert=True)
 
     elif data == "open_positions":
-        text = format_open_positions(state)
-        await _safe_edit(query, text, back_keyboard())
+        state.set("current_screen", "main")
+        await refresh_main(query, state)
 
     elif data == "last_session":
+        state.set("current_screen", "last_session")
         text = format_last_session(state)
         await _safe_edit(query, text, back_keyboard())
 
     elif data == "settings":
+        state.set("current_screen", "settings")
         text = format_settings(state)
         await _safe_edit(query, text, settings_keyboard())
 

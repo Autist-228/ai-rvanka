@@ -1,0 +1,66 @@
+AI Trading Bot - Telegram Paper Trading
+========================================
+
+Crypto futures paper trading bot with ML predictions.
+6 coins: BTC, ETH, SOL, XRP, BNB, DOGE (USDT-M futures)
+12 models: LightGBM + XGBoost per coin (production trained with Optuna)
+179 features: multi-timeframe (1m, 5m, 15m, 1h, 4h) + cross-coin + funding rate
+
+Setup
+-----
+1. Install dependencies:
+   pip install -r requirements.txt
+
+2. Set environment variables:
+   export TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
+   export PROXY_HOST="your_proxy_host"       # optional
+   export PROXY_PORT="your_proxy_port"       # optional
+   export PROXY_USER="your_proxy_user"       # optional
+   export PROXY_PASS="your_proxy_pass"       # optional
+
+3. Run the bot:
+   python run_bot.py
+
+Structure
+---------
+src/telegram_bot/bot.py      - Telegram bot handlers
+src/telegram_bot/engine.py   - Trading engine (signals, positions, P&L)
+src/telegram_bot/views.py    - UI message formatting
+src/telegram_bot/keyboards.py - Inline keyboard buttons
+src/telegram_bot/state.py    - User state persistence (JSON)
+configs/settings.py          - Trading parameters, symbols, timeframes
+models/                      - Trained ML models (LightGBM + XGBoost)
+src/feature_engine.py        - 179 features computation
+src/bybit_loader.py          - Bybit data downloader
+src/trainer.py               - Model training with Optuna
+src/train_production.py      - Production training pipeline
+
+Trading Parameters (default)
+-----------------------------
+- Demo balance: $500
+- Max position: 5% of balance or $300
+- Leverage: 1-20x (scaled by confidence)
+- Confidence threshold: 0.65
+- TP/SL per coin configurable via Telegram settings
+- Max 3 concurrent positions
+
+Systemd Service (for VPS)
+-------------------------
+[Unit]
+Description=AI Trading Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/trading-bot
+Environment=TELEGRAM_BOT_TOKEN=your_token
+Environment=PROXY_HOST=your_proxy
+Environment=PROXY_PORT=your_port
+Environment=PROXY_USER=your_user
+Environment=PROXY_PASS=your_pass
+ExecStart=/usr/bin/python3 run_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

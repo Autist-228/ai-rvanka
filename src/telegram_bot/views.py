@@ -1,74 +1,98 @@
 from datetime import datetime, timedelta
 
 
+def _fmt_pnl(val):
+    sign = "+" if val >= 0 else ""
+    icon = "\U0001f7e9" if val >= 0 else "\U0001f7e5"
+    return f"{icon} {sign}{val:,.2f}$"
+
+
 def format_main_view(state):
     is_demo = state.active_account == "demo"
     trading = state.trading_active
     positions = state.open_positions
+    balance = state.demo_balance
 
-    if is_demo:
-        balance = state.demo_balance
-        acc_line = "🟢 ДЕМО-СЧЁТ (активен)"
-        acc_balance = f"💰 ${balance:,.2f}"
-        bybit_line = "⚪ Реальный Bybit"
-        bybit_balance = "💰 —"
-    else:
-        balance = 0.0
-        acc_line = "⚪ Демо-счёт"
-        acc_balance = f"💰 ${state.demo_balance:,.2f}"
-        bybit_line = "🟢 Реальный Bybit (активен)"
-        bybit_balance = "💰 подключите API"
+    unrealized_pnl = sum(p.get("pnl", 0) for p in positions)
 
+    acc_icon = "\U0001f7e2" if is_demo else "\U0001f535"
+    acc_name = "\u0414\u0415\u041c\u041e" if is_demo else "\u0420\u0415\u0410\u041b"
+
+    lines = [f"{acc_icon} {acc_name} | \U0001f4b0 ${balance:,.2f}"]
+
+    if unrealized_pnl != 0:
+        ur_sign = "+" if unrealized_pnl >= 0 else ""
+        ur_icon = "\U0001f4c8" if unrealized_pnl >= 0 else "\U0001f4c9"
+        total_equity = balance + unrealized_pnl
+        lines.append(f"{ur_icon} \u041d\u0435\u0440\u0435\u0430\u043b. P&L: {ur_sign}{unrealized_pnl:,.2f}$")
+        lines.append(f"\U0001f48e Equity: ${total_equity:,.2f}")
+
+    lines.append("")
     if trading:
-        status_icon = "🟢"
-        status_text = "Торговля АКТИВНА"
+        lines.append("\U0001f7e2 \u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f \u0410\u041a\u0422\u0418\u0412\u041d\u0410")
     else:
-        status_icon = "🔴"
-        status_text = "Торговля ОСТАНОВЛЕНА"
+        lines.append("\U0001f534 \u0422\u043e\u0440\u0433\u043e\u0432\u043b\u044f \u041e\u0421\u0422\u0410\u041d\u041e\u0412\u041b\u0415\u041d\u0410")
 
-    session_line = ""
+    max_pos = state.settings.get("max_concurrent_total", 3)
+    lines.append(f"\U0001f4ca \u0421\u0434\u0435\u043b\u043e\u043a: {len(positions)}/{max_pos}")
+
+    if positions:
+        lines.append("")
+        for pos in positions:
+            direction = pos.get("direction_str", "?")
+            d_icon = "\U0001f535" if direction == "LONG" else "\U0001f534"
+            coin = pos.get("symbol", "???").replace("USDT", "")
+            entry = pos.get("entry_price", 0)
+            current = pos.get("current_price", entry)
+            pnl = pos.get("pnl", 0)
+            pnl_pct = pos.get("pnl_pct", 0)
+            lev = pos.get("leverage", 1)
+            size = pos.get("size_usd", 0)
+            p_icon = "\U0001f7e9" if pnl >= 0 else "\U0001f7e5"
+            sign = "+" if pnl >= 0 else ""
+            sign_pct = "+" if pnl_pct >= 0 else ""
+            lines.append(f"{d_icon} {direction} {coin} {lev}x | ${entry:,.2f} \u2192 ${current:,.2f}")
+            lines.append(f"   {p_icon} {sign}{pnl:,.2f}$ ({sign_pct}{pnl_pct:.2f}%) | ${size:.0f}")
+    elif trading:
+        lines.append("")
+        lines.append("\u23f3 \u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435 \u0441\u0438\u0433\u043d\u0430\u043b\u043e\u0432...")
+
+    lines.append("")
     if trading:
         session_start_bal = state.get("session_start_balance", balance)
-        session_pnl = balance - session_start_bal
+        session_pnl = balance - session_start_bal + unrealized_pnl
         session_pct = (session_pnl / max(session_start_bal, 1)) * 100
-        pnl_icon = "📈" if session_pnl >= 0 else "📉"
-        session_line = f"{pnl_icon} Текущая сессия: {'+' if session_pnl >= 0 else ''}{session_pnl:,.2f}$ ({'+' if session_pct >= 0 else ''}{session_pct:.1f}%)"
+        s_icon = "\U0001f4c8" if session_pnl >= 0 else "\U0001f4c9"
+        s_sign = "+" if session_pnl >= 0 else ""
+        lines.append(f"{s_icon} \u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0441\u0435\u0441\u0441\u0438\u044f: {s_sign}{session_pnl:,.2f}$ ({s_sign}{session_pct:.1f}%)")
     else:
         last = state.get("last_session")
         if last:
             pnl = last.get("pnl", 0)
             pct = last.get("pnl_pct", 0)
-            pnl_icon = "📈" if pnl >= 0 else "📉"
-            session_line = f"{pnl_icon} Последняя сессия: {'+' if pnl >= 0 else ''}{pnl:,.2f}$ ({'+' if pct >= 0 else ''}{pct:.1f}%)"
+            p_icon = "\U0001f4c8" if pnl >= 0 else "\U0001f4c9"
+            p_sign = "+" if pnl >= 0 else ""
+            lines.append(f"{p_icon} \u041f\u0440\u0435\u0434. \u0441\u0435\u0441\u0441\u0438\u044f: {p_sign}{pnl:,.2f}$ ({p_sign}{pct:.1f}%)")
         else:
-            session_line = "📊 Сессий пока не было"
+            lines.append("\U0001f4ca \u0421\u0435\u0441\u0441\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435 \u0431\u044b\u043b\u043e")
 
-    pnl_today = state.get_pnl_period(1)
-    pnl_7d = state.get_pnl_period(7)
-    pnl_30d = state.get_pnl_period(30)
+    pnl_today = state.get_pnl_period(1) + unrealized_pnl
+    pnl_7d = state.get_pnl_period(7) + unrealized_pnl
+    pnl_30d = state.get_pnl_period(30) + unrealized_pnl
 
-    def fmt_pnl(val):
-        icon = "🟩" if val >= 0 else "🟥"
-        return f"{icon} {'+' if val >= 0 else ''}{val:,.2f}$"
+    lines.append("")
+    lines.append("\u2501" * 24)
+    lines.append(f"\U0001f4c5 \u0421\u0435\u0433\u043e\u0434\u043d\u044f:  {_fmt_pnl(pnl_today)}")
+    lines.append(f"\U0001f4c5 7 \u0434\u043d\u0435\u0439:    {_fmt_pnl(pnl_7d)}")
+    lines.append(f"\U0001f4c5 30 \u0434\u043d\u0435\u0439:  {_fmt_pnl(pnl_30d)}")
+    lines.append("\u2501" * 24)
+    lines.append("")
 
-    text = (
-        f"{'━' * 28}\n"
-        f"  {acc_line}\n"
-        f"  {acc_balance}\n"
-        f"  {bybit_line}\n"
-        f"  {bybit_balance}\n"
-        f"{'━' * 28}\n\n"
-        f"{status_icon} Статус: {status_text}\n"
-        f"📊 Открыто сделок: {len(positions)}/{state.settings.get('max_concurrent_total', 3)}\n\n"
-        f"{session_line}\n\n"
-        f"📅 Сегодня: {fmt_pnl(pnl_today)}\n"
-        f"📅 7 дней: {fmt_pnl(pnl_7d)}\n"
-        f"📅 30 дней: {fmt_pnl(pnl_30d)}\n\n"
-        f"🏆 Win Rate: {state.get_win_rate():.1f}% | "
-        f"Сделок всего: {state.get('stats', {}).get('total_trades', 0)}"
-    )
+    total_trades = state.get("stats", {}).get("total_trades", 0)
+    wr = state.get_win_rate()
+    lines.append(f"\U0001f3c6 WR: {wr:.1f}% | \u0421\u0434\u0435\u043b\u043e\u043a: {total_trades}")
 
-    return text
+    return "\n".join(lines)
 
 
 def format_open_positions(state):
@@ -133,7 +157,7 @@ def format_last_session(state):
     last = state.get("last_session")
 
     if not last:
-        return "📋 Нет данных о последней сессии\n\nЗапустите торговлю, чтобы создать сессию."
+        return "\U0001f4cb \u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u043e \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438\n\n\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u0442\u043e\u0440\u0433\u043e\u0432\u043b\u044e, \u0447\u0442\u043e\u0431\u044b \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u0435\u0441\u0441\u0438\u044e."
 
     start_time = last.get("start_time", "?")
     end_time = last.get("end_time", "?")
@@ -143,8 +167,7 @@ def format_last_session(state):
     pnl_pct = last.get("pnl_pct", 0)
     trades_count = last.get("trades", 0)
 
-    pnl_icon = "📈" if pnl >= 0 else "📉"
-    result_icon = "🟩" if pnl >= 0 else "🟥"
+    result_icon = "\U0001f7e9" if pnl >= 0 else "\U0001f7e5"
 
     try:
         start_dt = datetime.fromisoformat(start_time)
@@ -153,13 +176,45 @@ def format_last_session(state):
         hours = duration.seconds // 3600
         mins = (duration.seconds % 3600) // 60
         if duration.days > 0:
-            dur_str = f"{duration.days}д {hours}ч {mins}м"
+            dur_str = f"{duration.days}\u0434 {hours}\u0447 {mins}\u043c"
         else:
-            dur_str = f"{hours}ч {mins}м"
+            dur_str = f"{hours}\u0447 {mins}\u043c"
     except (ValueError, TypeError):
         dur_str = "?"
 
     session_trades = [t for t in state.trade_history if t.get("session_start") == start_time]
+
+    lines = [
+        "\U0001f4cb \u041f\u043e\u0441\u043b\u0435\u0434\u043d\u044f\u044f \u0441\u0435\u0441\u0441\u0438\u044f",
+        "\u2501" * 28,
+        f"\u23f1 \u0414\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c: {dur_str}",
+        f"\U0001f4b0 \u0411\u0430\u043b\u0430\u043d\u0441: ${start_bal:,.2f} \u2192 ${end_bal:,.2f}",
+        f"{result_icon} \u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442: {'+' if pnl >= 0 else ''}{pnl:,.2f}$ ({'+' if pnl_pct >= 0 else ''}{pnl_pct:.1f}%)",
+        f"\U0001f4ca \u0421\u0434\u0435\u043b\u043e\u043a: {trades_count}",
+        "",
+        "\u2501" * 28,
+        "\U0001f4ca \u0421\u0434\u0435\u043b\u043a\u0438 \u0441\u0435\u0441\u0441\u0438\u0438:",
+    ]
+
+    if session_trades:
+        for t in session_trades:
+            sym = t.get("symbol", "?").replace("USDT", "")
+            d = t.get("direction_str", "?")
+            d_icon = "\U0001f535" if d == "LONG" else "\U0001f534"
+            t_pnl = t.get("pnl", 0)
+            t_icon = "\U0001f7e9" if t_pnl >= 0 else "\U0001f7e5"
+            reason = t.get("reason", "?")
+            reason_map = {"TP": "\U0001f3af", "SL": "\U0001f6d1", "TRAILING_SL": "\U0001f4d0", "SESSION_END": "\u23f9"}
+            r_icon = reason_map.get(reason, "\u2753")
+            entry_p = t.get("entry_price", 0)
+            exit_p = t.get("exit_price", 0)
+            lev = t.get("leverage", 1)
+            lines.append(f"  {d_icon} {d} {sym} {lev}x | {r_icon} {reason}")
+            lines.append(f"     ${entry_p:,.2f} \u2192 ${exit_p:,.2f} | {t_icon} {'+' if t_pnl >= 0 else ''}{t_pnl:,.2f}$")
+    else:
+        lines.append("  \u041d\u0435\u0442 \u0441\u0434\u0435\u043b\u043e\u043a")
+
+    lines.append("")
 
     coin_summary = {}
     for t in session_trades:
@@ -171,30 +226,19 @@ def format_last_session(state):
         if t.get("pnl", 0) > 0:
             coin_summary[sym]["wins"] += 1
 
-    lines = [
-        f"📋 Последняя сессия\n",
-        f"{'━' * 28}\n",
-        f"⏱ Длительность: {dur_str}\n",
-        f"💰 Баланс: ${start_bal:,.2f} → ${end_bal:,.2f}\n",
-        f"{result_icon} Результат: {'+' if pnl >= 0 else ''}{pnl:,.2f}$ ({'+' if pnl_pct >= 0 else ''}{pnl_pct:.1f}%)\n",
-        f"📊 Сделок: {trades_count}\n",
-        f"\n{'━' * 28}\n",
-        f"📊 По монетам:\n",
-    ]
-
     if coin_summary:
+        lines.append("\u2501" * 28)
+        lines.append("\U0001f4ca \u0418\u0442\u043e\u0433\u043e \u043f\u043e \u043c\u043e\u043d\u0435\u0442\u0430\u043c:")
         for sym, data in sorted(coin_summary.items(), key=lambda x: x[1]["pnl"], reverse=True):
             coin_name = sym.replace("USDT", "")
             wr = round(data["wins"] / max(data["trades"], 1) * 100, 1)
-            p_icon = "🟩" if data["pnl"] >= 0 else "🟥"
+            p_icon = "\U0001f7e9" if data["pnl"] >= 0 else "\U0001f7e5"
             lines.append(
-                f"  {p_icon} {coin_name}: {data['trades']} сделок | "
-                f"WR {wr:.0f}% | {'+' if data['pnl'] >= 0 else ''}{data['pnl']:,.2f}$\n"
+                f"  {p_icon} {coin_name}: {data['trades']} \u0441\u0434. | "
+                f"WR {wr:.0f}% | {'+' if data['pnl'] >= 0 else ''}{data['pnl']:,.2f}$"
             )
-    else:
-        lines.append("  Нет данных по сделкам\n")
 
-    return "".join(lines)
+    return "\n".join(lines)
 
 
 def format_settings(state):
@@ -262,43 +306,3 @@ def format_coin_tpsl_edit(symbol, current_tp, current_sl):
         f"Stop Loss: {current_sl * 100:.1f}%\n\n"
         f"Выберите что изменить:"
     )
-
-
-def format_trade_notification(action, data):
-    if action == "open":
-        direction = data.get("direction_str", "?")
-        icon = "🔵" if direction == "LONG" else "🔴"
-        symbol = data.get("symbol", "?").replace("USDT", "")
-        price = data.get("entry_price", 0)
-        size = data.get("size_usd", 0)
-        lev = data.get("leverage", 1)
-        conf = data.get("confidence", 0)
-
-        return (
-            f"{icon} ОТКРЫТА {direction} {symbol}/USDT\n"
-            f"💲 Цена: ${price:,.4f}\n"
-            f"📏 Размер: ${size:.2f} ({lev}x)\n"
-            f"🎯 Уверенность: {conf:.1%}"
-        )
-
-    elif action == "close":
-        symbol = data.get("symbol", "?").replace("USDT", "")
-        pnl = data.get("pnl", 0)
-        reason = data.get("reason", "?")
-        pnl_icon = "🟩" if pnl >= 0 else "🟥"
-
-        reason_map = {
-            "TP": "🎯 Take Profit",
-            "SL": "🛑 Stop Loss",
-            "TRAILING_SL": "📐 Trailing Stop",
-            "SESSION_END": "⏹ Конец сессии",
-        }
-        reason_str = reason_map.get(reason, reason)
-
-        return (
-            f"{pnl_icon} ЗАКРЫТА {symbol}/USDT\n"
-            f"📋 Причина: {reason_str}\n"
-            f"💰 P&L: {'+' if pnl >= 0 else ''}{pnl:,.2f}$"
-        )
-
-    return ""

@@ -25,10 +25,8 @@ def main_keyboard(state):
     keyboard = [
         trade_row,
         [switch_btn],
-        [InlineKeyboardButton("📊 Открытые сделки", callback_data="open_positions")],
-        [InlineKeyboardButton("📋 Последняя сессия", callback_data="last_session")],
-        [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
-        [InlineKeyboardButton("🔄 Обновить", callback_data="refresh")],
+        [InlineKeyboardButton("\U0001f4cb \u041f\u043e\u0441\u043b\u0435\u0434\u043d\u044f\u044f \u0441\u0435\u0441\u0441\u0438\u044f", callback_data="last_session")],
+        [InlineKeyboardButton("\u2699\ufe0f \u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438", callback_data="settings")],
     ]
     return InlineKeyboardMarkup(keyboard)
 

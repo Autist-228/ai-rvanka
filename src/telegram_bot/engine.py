@@ -18,17 +18,20 @@ from src.feature_engine import (
 
 logger = logging.getLogger(__name__)
 
-PROXY_HOST = "193.233.197.120"
-PROXY_PORT = "16093"
-PROXY_USER = "kPwaUBz3GL"
-PROXY_PASS = "3OQ8UWMyvP"
+PROXY_HOST = os.environ.get("PROXY_HOST", "")
+PROXY_PORT = os.environ.get("PROXY_PORT", "")
+PROXY_USER = os.environ.get("PROXY_USER", "")
+PROXY_PASS = os.environ.get("PROXY_PASS", "")
 
 
 def _get_proxies():
-    return {
-        "http": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
-        "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
-    }
+    if not PROXY_HOST or not PROXY_PORT:
+        return {}
+    if PROXY_USER:
+        url = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+    else:
+        url = f"http://{PROXY_HOST}:{PROXY_PORT}"
+    return {"http": url, "https": url}
 
 
 class ModelPredictor:
@@ -175,6 +178,7 @@ class TradingEngine:
         self.prices = price_tracker
         self._running = False
         self._task = None
+        self._refresh_task = None
         self._on_trade_callback = None
         self._on_update_callback = None
 
@@ -187,40 +191,49 @@ class TradingEngine:
             return
         self._running = True
         self.state.start_session()
-        self._task = asyncio.create_task(self._trading_loop())
+        self._task = asyncio.create_task(self._signal_loop())
+        self._refresh_task = asyncio.create_task(self._refresh_loop())
         logger.info(f"Trading started for user {self.state.user_id}")
 
     async def stop(self):
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+        for task in [self._task, self._refresh_task]:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
         await self._close_all_positions("SESSION_END")
         self.state.stop_session()
         logger.info(f"Trading stopped for user {self.state.user_id}")
 
-    async def _trading_loop(self):
-        interval_map = {"15": 15}
-        cycle_seconds = interval_map.get(PRIMARY_TF.replace("m", ""), 15) * 60
-
+    async def _refresh_loop(self):
         while self._running:
             try:
                 await self.prices.fetch_current_prices()
                 await self._update_positions()
-                await self._check_signals()
 
                 if self._on_update_callback:
                     await self._on_update_callback()
 
-                await asyncio.sleep(min(cycle_seconds, 60))
+                await asyncio.sleep(5)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Trading loop error: {e}")
+                logger.error(f"Refresh loop error: {e}")
+                await asyncio.sleep(5)
+
+    async def _signal_loop(self):
+        while self._running:
+            try:
+                await self._check_signals()
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Signal loop error: {e}")
                 await asyncio.sleep(30)
 
     async def _check_signals(self):

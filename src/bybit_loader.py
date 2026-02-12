@@ -12,15 +12,15 @@ from configs.settings import SYMBOLS, INTERVALS, INTERVAL_NAMES, DATA_DIR
 BYBIT_BASE = "https://api.bybit.com"
 BYBIT_LIMIT = 200
 
-PROXY_HOST = "193.233.197.120"
-PROXY_PORT = "16093"
-PROXY_USER = "kPwaUBz3GL"
-PROXY_PASS = "3OQ8UWMyvP"
+PROXY_HOST = os.environ.get("PROXY_HOST", "")
+PROXY_PORT = os.environ.get("PROXY_PORT", "")
+PROXY_USER = os.environ.get("PROXY_USER", "")
+PROXY_PASS = os.environ.get("PROXY_PASS", "")
 
-PROXIES = {
-    "http": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
-    "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
-}
+PROXIES = {}
+if PROXY_HOST and PROXY_PORT:
+    _proxy_url = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}" if PROXY_USER else f"http://{PROXY_HOST}:{PROXY_PORT}"
+    PROXIES = {"http": _proxy_url, "https": _proxy_url}
 
 BYBIT_INTERVALS = {
     "1": "1",

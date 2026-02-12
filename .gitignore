@@ -3,7 +3,8 @@ __pycache__/
 *.pyo
 .env
 data/
-models/
+data_bybit/
 results/
-*.pkl
+*.log
 .DS_Store
+bot_data/
